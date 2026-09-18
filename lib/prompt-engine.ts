@@ -1,4 +1,5 @@
 import { translateFreeText } from '@/data/translations';
+import { isSceneComposition } from '@/data/camera-expansion';
 import {
   englishFor,
   findChoice,
@@ -275,12 +276,6 @@ const fieldNames: Partial<Record<LockKey, [string, string]>> = {
 const fieldName = (field: LockKey, language: 'ja' | 'en') =>
   fieldNames[field]?.[language === 'ja' ? 0 : 1] ?? field;
 
-const sceneCompositionIds = new Set([
-  'centered-composition',
-  'slightly-off-center-composition',
-  'composition-showing-more-background',
-]);
-
 /** Returns user-facing explanations for values that are intentionally omitted or normalized. */
 export function analyzePromptNotices(sourceDraft: CharacterDraft): PromptNotice[] {
   const draft = resolveDraftConflicts(sourceDraft);
@@ -326,7 +321,7 @@ export function analyzePromptNotices(sourceDraft: CharacterDraft): PromptNotice[
     });
     const hidden = compact([
       draft.cameraAngle ? ['cameraAngle', labelFor('cameraAngle', draft.cameraAngle), englishFor('cameraAngle', draft.cameraAngle)] as const : null,
-      draft.composition && !sceneCompositionIds.has(draft.composition)
+      draft.composition && !isSceneComposition(draft.composition)
         ? ['composition', labelFor('composition', draft.composition), englishFor('composition', draft.composition)] as const : null,
       draft.generatedGap
         ? ['generatedGap', draft.generatedGap.labelJa, draft.generatedGap.labelEn] as const : null,
@@ -525,7 +520,7 @@ export function generatePrompts(sourceDraft: CharacterDraft): PromptOutputs {
   const gazeJa = draft.gaze ? labelFor('gaze', draft.gaze) : '';
   const gazeEn = draft.gaze ? englishFor('gaze', draft.gaze) : '';
   const outputCameraAngle = backgroundOnly ? '' : draft.cameraAngle;
-  const outputComposition = backgroundOnly && !sceneCompositionIds.has(draft.composition) ? '' : draft.composition;
+  const outputComposition = backgroundOnly && !isSceneComposition(draft.composition) ? '' : draft.composition;
   const cameraJa = compact([
     outputCameraAngle ? `視点：${labelFor('cameraAngle', outputCameraAngle)}` : '',
     outputComposition ? `構図：${labelFor('composition', outputComposition)}` : '',

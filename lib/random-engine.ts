@@ -2,6 +2,7 @@ import { compatibilityRules, type CompatibilitySelector } from '@/data/compatibi
 import { gapBlueprintById, type GapBlueprintSegment } from '@/data/gapBlueprints';
 import { gapSeeds } from '@/data/gapSeeds';
 import { optionsByField } from '@/data/options';
+import { isSceneComposition } from '@/data/camera-expansion';
 import { themes } from '@/data/randomThemes';
 import { isMinorAge, normalizeAgeInput } from './age-utils';
 import type {
@@ -167,6 +168,7 @@ const isDetailedBackground = (choice: Choice) =>
 
 const hardConflict = (choice: Choice, context: WeightContext) => {
   const { field } = context;
+  if (field === 'composition' && context.draft.purpose === 'background' && !isSceneComposition(choice.id)) return true;
   const resolvedIds = (target: LockKey) => context.resolvedFields.has(target) ? asIds(context.draft[target]) : [];
   const minorAges = new Set(['child', 'teen', 'boy', 'girl']);
   const adultOnly = (target: LockKey, item: Choice) => {

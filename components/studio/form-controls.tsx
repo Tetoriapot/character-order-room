@@ -103,6 +103,7 @@ export function SingleSelect({
   recents = [],
   onToggleFavorite,
   onRecordRecent,
+  searchable = false,
 }: {
   label: string;
   value: string;
@@ -115,6 +116,7 @@ export function SingleSelect({
   recents?: string[];
   onToggleFavorite?: (id: string) => void;
   onRecordRecent?: (id: string) => void;
+  searchable?: boolean;
 }) {
   const [view, setView] = useState<'all' | 'favorites' | 'recent'>('all');
   const [categoryId, setCategoryId] = useState('');
@@ -143,7 +145,7 @@ export function SingleSelect({
     onRecordRecent?.(next);
     onChange(next);
   };
-  if (options.length >= 30) {
+  if (searchable || options.length >= 30) {
     return (
       <div>
         <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -183,14 +185,16 @@ export function SingleSelect({
               placeholder={placeholder}
               className="h-11 w-full rounded-xl bg-card"
             />
-            <ComboboxContent>
+            <ComboboxContent className="w-[min(22rem,calc(100vw-2rem))] min-w-0">
               <ComboboxEmpty>{language === 'ja' ? '一致する候補がありません' : 'No matching options'}</ComboboxEmpty>
               <ComboboxList>
                 {(option: Pick<Choice, 'id' | 'labelJa' | 'labelEn'>, index: number) => (
-                  <ComboboxItem key={option.id} value={option} index={index} className="min-h-11">
-                    <span>{language === 'ja' ? option.labelJa : option.labelEn}</span>
-                    {favorites.includes(option.id) && <Star className="ml-auto size-4 fill-current text-amber-500" />}
-                    <span className="truncate text-sm text-muted-foreground">{language === 'ja' ? option.labelEn : option.labelJa}</span>
+                  <ComboboxItem key={option.id} value={option} index={index} className="min-h-11 py-2">
+                    <span className="min-w-0 flex-1 space-y-1 whitespace-normal break-words">
+                      <span className="block">{language === 'ja' ? option.labelJa : option.labelEn}</span>
+                      <span className="block text-sm text-muted-foreground">{language === 'ja' ? option.labelEn : option.labelJa}</span>
+                    </span>
+                    {favorites.includes(option.id) && <Star className="size-4 fill-current text-amber-500" />}
                   </ComboboxItem>
                 )}
               </ComboboxList>

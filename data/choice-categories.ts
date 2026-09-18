@@ -56,6 +56,20 @@ const negativeCategories = [
   category('composition', '構図・内容', 'Composition & content', /crop|crowd|people|character|clutter|object|background|perspective|silhouette/i),
 ];
 
+const cameraCategories = [
+  category('direction', '向き・左右', 'Direction & sides', /camera-direction|^(front|three-quarter|profile|over-shoulder)\b/),
+  category('height', '高さ・俯瞰・あおり', 'Height & elevation', /camera-height|^(eye|high|low|dramatic-low-angle|top-down-angle)\b/),
+  category('effect', '演出・距離', 'Effect & distance', /camera-dramatic|^(tilted|close-up-framing|distant-shot|cinematic-angle|portrait-oriented-framing)\b/),
+];
+
+const compositionCategories = [
+  category('framing', '写す範囲', 'Framing', /composition-framing|^(close|headshot|bust|waist|knees|full|dynamic-full-body-composition|upper-body-focused-composition|silhouette-focused-composition)\b/),
+  category('placement', '配置・視線誘導', 'Placement & visual flow', /composition-placement|^(centered-composition|slightly-off-center-composition)\b/),
+  category('space', '余白', 'Negative space', /composition-space/),
+  category('depth', '背景・奥行き', 'Setting & depth', /composition-depth|^composition-showing-more-background\b/),
+  category('format', '画面形・設定画', 'Format & reference', /^(vertical-portrait-composition|square-icon-composition|sheet)\b/),
+];
+
 export function categoriesForField(field: LockKey | undefined): ChoiceCategory[] {
   if (!field) return [];
   if (['hairColors', 'outfitColors', 'eyeColor'].includes(field)) return colorCategories;
@@ -63,6 +77,8 @@ export function categoriesForField(field: LockKey | undefined): ChoiceCategory[]
   if (field === 'hairstyle') return hairCategories;
   if (field === 'pose') return actionCategories;
   if (field === 'negatives') return negativeCategories;
+  if (field === 'cameraAngle') return cameraCategories;
+  if (field === 'composition') return compositionCategories;
   if (['outfit', 'accessories', 'background', 'lighting', 'styleTraits', 'faceFeatures'].includes(field)) return visualCategories;
   return [];
 }

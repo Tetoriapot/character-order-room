@@ -31,8 +31,9 @@ import { gapAccessories } from './gapAccessories';
 import { expressions } from './expressions';
 import { poses } from './poses';
 import { gazes } from './gaze';
-import { cameraAngles } from './cameraAngles';
-import { compositions } from './compositions';
+import { cameraAngles as baseCameraAngles } from './cameraAngles';
+import { compositions as baseCompositions } from './compositions';
+import { expandedCameraAngles, expandedCompositions } from './camera-expansion';
 import { backgrounds } from './backgrounds';
 import { lighting } from './lighting';
 import { negativePrompts as baseNegatives } from './negativePrompts';
@@ -41,6 +42,8 @@ import { supplementalNegatives, supplementalOutfits } from './supplemental';
 const accessories = [...baseAccessories, ...gapAccessories];
 const outfits = [...baseOutfits, ...supplementalOutfits];
 const negatives = [...baseNegatives, ...supplementalNegatives];
+const cameraAngles = [...baseCameraAngles, ...expandedCameraAngles];
+const compositions = [...baseCompositions, ...expandedCompositions];
 
 export const optionsByField: Partial<Record<LockKey, Choice[]>> = {
   purpose: purposes,

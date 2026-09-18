@@ -106,6 +106,7 @@ import {
 import { analyzePromptNotices, formatProfileOutput } from '@/lib/prompt-engine';
 import { buildPromptBlocks, generateStudioPrompts as generatePrompts } from '@/lib/prompt-blocks';
 import { findStylePreset } from '@/lib/style-pack';
+import { isSceneComposition } from '@/data/camera-expansion';
 import type { StylePackSelection } from '@/lib/style-pack-types';
 import { applyPurposeRecommendation } from '@/lib/purpose-engine';
 import {
@@ -258,6 +259,21 @@ const outputTabs: Array<{ value: StudioOutputMode; labelJa: string; labelEn: str
 ];
 
 const releaseNotes = [
+  {
+    date: '2026-09-18',
+    titleJa: 'カメラ角度30種・構図35種に拡張',
+    titleEn: 'Expanded to 30 camera angles and 35 compositions',
+    itemsJa: [
+      '背面・左右・上方や下方からの視点、目元のアップ、余白、三分割配置、前景を使う構図などを追加しました。',
+      'カメラ角度と構図を検索・カテゴリ・お気に入り・最近から選べるようにしました。',
+      '背景用の構図は背景プロンプトにも反映し、背景のランダム生成では人物専用の構図を選ばないようにしました。',
+    ],
+    itemsEn: [
+      'Added rear and side viewpoints, elevation variants, eye close-ups, negative space, thirds, and depth compositions.',
+      'Find camera and composition options using search, categories, favorites, and recent selections.',
+      'Scene-compatible compositions now appear in background prompts; background randomization excludes portrait-only framing.',
+    ],
+  },
   {
     date: '2026-09-18',
     titleJa: '画風80種・補助30種とブロック出力',
@@ -1870,9 +1886,9 @@ export function CharacterStudio() {
                 </StudioSection>
 
                 <StudioSection hidden={!displayedSectionIds.includes('camera')} value="camera" icon={<Camera />} eyebrow={backgroundOnly ? 'STEP 3' : 'STEP 7'} title={tr('カメラと構図', 'Camera and composition')} summary={tr(`${labelFor('cameraAngle', draft.cameraAngle)}・${labelFor('composition', draft.composition)}・${labelFor('aspectRatio', draft.aspectRatio)}`, `${englishFor('cameraAngle', draft.cameraAngle)} · ${englishFor('composition', draft.composition)} · ${englishFor('aspectRatio', draft.aspectRatio)}`)}>
-                  <div className={`grid gap-3 ${backgroundOnly ? 'sm:grid-cols-2' : 'sm:grid-cols-3'}`}>
-                    {!backgroundOnly && <FormRow label={tr('カメラ角度', 'Camera angle')} hint={tr('例：俯瞰＝上から見下ろす、あおり＝下から見上げる', 'Example: high angle looks down; low angle looks up')} actions={fieldActions('cameraAngle', tr('カメラ角度', 'Camera angle'))}><SingleSelect language={language} label={tr('カメラ角度', 'Camera angle')} value={draft.cameraAngle} options={cameraAngles} onChange={(value) => updateField('cameraAngle', value)} /></FormRow>}
-                    <FormRow label={tr('構図', 'Composition')} hint={tr('例：バストアップ＝胸から上、全身＝頭から足先まで', 'Example: bust shows chest-up; full body includes head to toe')} actions={fieldActions('composition', tr('構図', 'Composition'))}><SingleSelect language={language} label={tr('構図', 'Composition')} value={draft.composition} options={compositions} onChange={(value) => updateField('composition', value)} /></FormRow>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {!backgroundOnly && <FormRow label={tr('カメラ角度', 'Camera angle')} hint={tr(`${cameraAngles.length}種から1つ。左右は人物を基準にしたカメラの位置です。`, `Choose one of ${cameraAngles.length}. Left and right describe the camera position relative to the subject.`)} actions={fieldActions('cameraAngle', tr('カメラ角度', 'Camera angle'))}><SingleSelect {...catalogProps('cameraAngle')} searchable label={tr('カメラ角度', 'Camera angle')} value={draft.cameraAngle} options={cameraAngles} onChange={(value) => updateField('cameraAngle', value)} /></FormRow>}
+                    <FormRow label={tr('構図', 'Composition')} hint={tr(backgroundOnly ? '背景にも使える配置・余白・奥行きから選びます。保持中の人物用構図は出力されません。' : `${compositions.length}種から1つ。写す範囲・配置・余白・奥行きで絞れます。`, backgroundOnly ? 'Choose scene-compatible placement, space, or depth. Retained portrait-only framing is not output.' : `Choose one of ${compositions.length}. Filter by framing, placement, space, or depth.`)} actions={fieldActions('composition', tr('構図', 'Composition'))}><SingleSelect {...catalogProps('composition')} searchable label={tr('構図', 'Composition')} value={draft.composition} options={backgroundOnly ? compositions.filter((choice) => isSceneComposition(choice.id) || choice.id === draft.composition) : compositions} onChange={(value) => updateField('composition', value)} /></FormRow>
                     <FormRow label={tr('画面の縦横', 'Aspect ratio')} actions={fieldActions('aspectRatio', tr('画面の縦横', 'Aspect ratio'))}><SingleSelect language={language} label={tr('画面の縦横', 'Aspect ratio')} value={draft.aspectRatio} options={aspectRatios} onChange={(value) => updateField('aspectRatio', value)} /></FormRow>
                   </div>
                 </StudioSection>
