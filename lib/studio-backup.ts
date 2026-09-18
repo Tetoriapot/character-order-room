@@ -1,6 +1,6 @@
 import type { CharacterSnapshot, HistoryEntry, SavedPreset, StudioPreferences } from './character-types';
-import type { NoteWorkspace } from './inference/note-workspace';
-import { parseNoteWorkspace } from './inference/note-workspace';
+import type { NoteWorkspace, PersonNoteWorkspaces } from './inference/note-workspace';
+import { parseNoteWorkspace, parsePersonNotes } from './inference/note-workspace';
 import { migrateSnapshot, parseHistory, parsePresets, parseStudioImport, parseStudioPreferences } from './storage';
 
 export const WORKSPACE_KEY = 'character-order-maker:workspace:v2';
@@ -14,6 +14,7 @@ export type StudioWorkspace = {
   randomHistory: HistoryEntry[];
   preferences: StudioPreferences;
   noteWorkspace: NoteWorkspace;
+  personNotes?: PersonNoteWorkspaces;
   editorMode: 'form' | 'note';
 };
 
@@ -44,6 +45,7 @@ export function parseStudioBackup(raw: string | null): StudioWorkspace | null {
       randomHistory: parseHistory(JSON.stringify(value.randomHistory)),
       preferences: parseStudioPreferences(JSON.stringify(value.preferences)),
       noteWorkspace,
+      ...(value.personNotes ? { personNotes: parsePersonNotes(value.personNotes) } : {}),
       editorMode: value.editorMode === 'note' ? 'note' : 'form',
     };
   } catch { return null; }

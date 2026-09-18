@@ -80,6 +80,7 @@ export type CharacterDraft = CharacterFields & {
 export type CastMember = {
   id: string;
   name: string;
+  nameEn?: string;
   position: string;
   // Only person-specific fields are stored here; scene and style remain shared.
   fields: Partial<CharacterFields>;
@@ -94,6 +95,7 @@ export type CharacterCast = {
   members: CastMember[];
   relationship: string;
   interaction: string;
+  relationshipNote?: string;
 };
 
 export type CharacterSnapshot = {
@@ -113,6 +115,7 @@ export type SavedPreset = {
   lastUsedAt?: string;
   parentId?: string;
   note?: string;
+  scope?: 'person' | 'outfit';
 };
 
 export type HistoryEntry = {
@@ -120,6 +123,7 @@ export type HistoryEntry = {
   createdAt: string;
   label: string;
   name?: string;
+  note?: string;
   snapshot: CharacterSnapshot;
   source?: 'random' | 'gap' | 'copy' | 'load' | 'save' | 'manual' | 'batch';
   pinned?: boolean;

@@ -194,6 +194,7 @@ export function parsePresets(raw: string | null): SavedPreset[] {
       lastUsedAt: typeof value.lastUsedAt === 'string' ? value.lastUsedAt : undefined,
       parentId: typeof value.parentId === 'string' ? value.parentId : undefined,
       note: typeof value.note === 'string' ? value.note.slice(0, 240) : undefined,
+      scope: value.scope === 'person' || value.scope === 'outfit' ? value.scope : undefined,
     }];
   });
 }
@@ -210,6 +211,7 @@ export function parseHistory(raw: string | null): HistoryEntry[] {
       id: value.id,
       label: value.label,
       name: typeof value.name === 'string' ? value.name.slice(0, 80) : undefined,
+      note: typeof value.note === 'string' ? value.note.slice(0, 240) : undefined,
       createdAt: typeof value.createdAt === 'string' ? value.createdAt : new Date(0).toISOString(),
       snapshot,
       source,
@@ -225,6 +227,7 @@ export function appendHistory(current: HistoryEntry[], entry: HistoryEntry): His
     existing ? {
       ...entry,
       name: entry.name ?? existing.name,
+      note: entry.note ?? existing.note,
       pinned: entry.pinned ?? existing.pinned,
     } : entry,
     ...current.filter((item) => JSON.stringify(item.snapshot) !== fingerprint),

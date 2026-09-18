@@ -288,7 +288,7 @@ export function analyzePromptNotices(sourceDraft: CharacterDraft): PromptNotice[
       id: 'cast-count-override', kind: 'excluded', field: 'negatives', labelJa: '人数指定を優先', labelEn: 'Group count takes priority',
       reasonJa: '複数人モードでは「人物は1人だけ」「人物なし」を出力せず、設定した人数を使います。', reasonEn: 'Single-person and no-people constraints are omitted; the configured group count is used.',
     });
-    if (draft.cast!.interaction) notices.push({ id: 'cast-action-override', kind: 'info', field: 'pose', labelJa: '全員の動作を優先', labelEn: 'Group action takes priority', reasonJa: '個別のポーズと表情・ポーズの自由入力は保持したまま出力から外しています。', reasonEn: 'Individual poses and custom action notes are retained but omitted.' });
+    if (draft.cast!.interaction) notices.push({ id: 'cast-action-override', kind: 'info', field: 'pose', labelJa: '全員の動作を優先', labelEn: 'Group action takes priority', reasonJa: '個別ポーズとポーズ専用メモだけを出力から外します。表情と旧・表情／ポーズメモは保持して出力します。旧メモに動作が含まれる場合は、ポーズ専用欄へ移してください。', reasonEn: 'Individual poses and pose-only notes are omitted. Expressions and legacy mixed notes remain in output; move any legacy pose instructions into the pose-only field.' });
     return notices;
   }
   const draft = resolveDraftConflicts(sourceDraft);
@@ -459,7 +459,7 @@ export function analyzePromptNotices(sourceDraft: CharacterDraft): PromptNotice[
     const trimmed = value.trim();
     if (!trimmed || ['negatives', 'gap', 'gapEn'].includes(key)
       || (activeStyle && key === 'style')
-      || (backgroundOnly && !['style', 'scene'].includes(key))) continue;
+      || (backgroundOnly && !['style', 'scene', 'must', 'preference', 'layout'].includes(key))) continue;
     const translated = translateFreeText(trimmed);
     if (/[\u3040-\u30ff\u3400-\u9fff]/.test(translated)) {
       add({
@@ -569,7 +569,7 @@ export function generatePrompts(sourceDraft: CharacterDraft, negativeContexts?: 
   const customEntries = Object.entries(draft.custom)
     .filter(([key, value]) => !['negatives', 'gap', 'gapEn'].includes(key)
       && (!activeStyle || key !== 'style')
-      && (!backgroundOnly || ['style', 'scene'].includes(key))
+      && (!backgroundOnly || ['style', 'scene', 'must', 'preference', 'layout'].includes(key))
       && value.trim())
     .map(([key, value]) => [key, value.trim()] as const);
   const legacyGapJa = draft.custom.gap?.trim().replace(/^ギャップ要素[：:]\s*/, '') ?? '';
@@ -579,12 +579,12 @@ export function generatePrompts(sourceDraft: CharacterDraft, negativeContexts?: 
   const customPositive = compact([
     antiAiJa ? `画風の補助：${antiAiJa}` : '',
     gapLabelJa ? `ギャップ要素：${gapLabelJa}` : '',
-    ...customEntries.map(([, value]) => value),
+    ...customEntries.map(([key, value]) => `${key === 'must' ? '必須条件：' : key === 'preference' ? '希望条件（可能なら）：' : ''}${value}`),
   ]);
   const customPositiveEn = compact([
     antiAiEn,
     gapLabelEn ? `Visual contrast: ${gapLabelEn}` : '',
-    ...customEntries.map(([, value]) => translateFreeText(value)),
+    ...customEntries.map(([key, value]) => `${key === 'must' ? 'Required: ' : key === 'preference' ? 'Preferred if possible: ' : ''}${translateFreeText(value)}`),
   ]);
 
   const purposeLeadJa = purposeJa ? (purposeJa.endsWith('用') ? `${purposeJa}の` : `${purposeJa}向けの`) : '';
@@ -718,12 +718,12 @@ export function generatePrompts(sourceDraft: CharacterDraft, negativeContexts?: 
   };
 }
 
-function generateCastPrompts(source: CharacterDraft): PromptOutputs {
+export function buildCastPromptParts(source: CharacterDraft) {
   const draft = syncCast({ draft: source, locks: {} }).draft;
   const cast = draft.cast!;
   const people = cast.members.map((member) => {
     const person = memberDraft(draft, member);
-    return cast.interaction ? { ...person, pose: '', custom: { ...person.custom, action: '' } } : person;
+    return cast.interaction ? { ...person, pose: '', custom: { ...person.custom, pose: '' } } : person;
   });
   const incompatibleCount = /人物は?\s*[1一]人|人物なし|一人だけ|ひとり|複数.*(?:禁止|なし)|no people|single character|exactly one|\bsolo\b|no (?:other |extra )?(?:characters|people)|multiple (?:characters|people)/i;
   const shared = blankPerson(draft);
@@ -740,11 +740,18 @@ function generateCastPrompts(source: CharacterDraft): PromptOutputs {
   const directions = (language: 'ja' | 'en') => [
     cast.relationship ? `${language === 'ja' ? '関係' : 'Relationship'}: ${castChoiceLabel(castRelationships, cast.relationship, language)}` : '',
     cast.interaction ? `${language === 'ja' ? '全員の動作' : 'Group action'}: ${castChoiceLabel(castInteractions, cast.interaction, language)}` : '',
+    cast.relationshipNote ? `${language === 'ja' ? '関係の補足' : 'Relationship notes'}: ${language === 'ja' ? cast.relationshipNote : translateFreeText(cast.relationshipNote)}` : '',
   ].filter(Boolean).join('; ');
   const label = (index: number, language: 'ja' | 'en') => {
     const member = cast.members[index];
-    return `${language === 'ja' ? '人物' : 'Person '}${index + 1}${member.name ? ` (${member.name})` : ''}${member.position ? ` — ${castChoiceLabel(castPositions, member.position, language)}` : ''}`;
+    const name = language === 'en' ? member.nameEn || member.name : member.name;
+    return `${language === 'ja' ? '人物' : 'Person '}${index + 1}${name ? ` (${name})` : ''}${member.position ? ` — ${castChoiceLabel(castPositions, member.position, language)}` : ''}`;
   };
+  return { cast, common, individual, groupJa, groupEn, directions, label };
+}
+
+function generateCastPrompts(source: CharacterDraft): PromptOutputs {
+  const { common, individual, groupJa, groupEn, directions, label } = buildCastPromptParts(source);
   const positiveJa = [groupJa, common.positiveJa, directions('ja'), ...individual.map((output, index) => `【${label(index, 'ja')}】\n${output.positiveJa || '詳細は未指定。'}`)].filter(Boolean).join('\n\n');
   const positiveEn = [groupEn, common.positiveEn, directions('en'), ...individual.map((output, index) => `[${label(index, 'en')}]\n${output.positiveEn || 'Details unspecified.'}`)].filter(Boolean).join('\n\n');
   const compactGroup = (mode: 'short' | 'tags') => [groupEn, common[mode].replace(/\nConstraints:[\s\S]*$/i, ''), directions('en'), ...individual.map((output, index) => `[${label(index, 'en')}]: ${output[mode].replace(/\nConstraints:[\s\S]*$/i, '') || 'Details unspecified'}`), common.negativeEn].filter(Boolean).join('\n');
@@ -815,7 +822,7 @@ export function formatProfileOutput(
         positive: outputs.positiveJa,
         negative: outputs.negativeJa,
         combined: hasOutput
-          ? `【制作内容】\n${outputs.positiveJa}\n\n【避けたい要素】\n${outputs.negativeJa || '特になし'}\n\n【参考用英語】\n${outputs.positiveEn}`
+          ? `【依頼の要約】\n人数：${draft.purpose === 'background' ? '人物なし（背景のみ）' : isCastActive(draft) ? `${draft.cast!.members.length}人` : '1人'}${isCastActive(draft) ? `\n配置：${draft.cast!.members.map((member, index) => `人物${index + 1}${member.name ? `（${member.name}）` : ''}＝${castChoiceLabel(castPositions, member.position, 'ja')}`).join('／')}` : ''}\n必須：${draft.custom.must || '特になし'}\n希望（可能なら）：${draft.custom.preference || '特になし'}\n\n【制作内容】\n${outputs.positiveJa}\n\n【避けたい要素】\n${outputs.negativeJa || '特になし'}\n\n【参考用英語】\n${outputs.positiveEn}`
           : '',
         hintJa: 'イラストレーターへの依頼やチーム共有向けの読みやすい形式です。',
         hintEn: 'A readable format for illustrators and team handoffs.',

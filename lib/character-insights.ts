@@ -12,6 +12,8 @@ export type CharacterChange = {
   beforeEn: string;
   afterJa: string;
   afterEn: string;
+  groupJa?: string;
+  groupEn?: string;
 };
 
 export const fieldLabels: Record<LockKey, { ja: string; en: string }> = {
@@ -42,13 +44,18 @@ const formatValue = (field: LockKey, value: string | string[], language: UiLangu
 
 const sameValue = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right);
 
-const customFieldLabels: Record<string, { ja: string; en: string }> = {
+export const customFieldLabels: Record<string, { ja: string; en: string }> = {
   purpose: { ja: '用途の自由入力', en: 'Purpose notes' },
   style: { ja: '絵柄の自由入力', en: 'Custom style' },
   character: { ja: '人物の自由入力', en: 'Custom character' },
   appearance: { ja: '顔・髪の自由入力', en: 'Custom appearance' },
   outfit: { ja: '衣装の自由入力', en: 'Custom outfit' },
   action: { ja: '表情・ポーズの自由入力', en: 'Custom pose' },
+  expression: { ja: '表情の自由入力', en: 'Expression notes' },
+  pose: { ja: 'ポーズの自由入力', en: 'Pose notes' },
+  must: { ja: '必須条件', en: 'Must-haves' },
+  preference: { ja: '希望条件', en: 'Preferences' },
+  layout: { ja: '配置・余白', en: 'Layout and space' },
   scene: { ja: '背景・光の自由入力', en: 'Custom scene' },
   negatives: { ja: '独自の禁止事項', en: 'Custom exclusions' },
 };
@@ -130,6 +137,7 @@ export function diffSnapshots(before: CharacterSnapshot, after: CharacterSnapsho
       if (beforeJa !== afterJa || beforeEn !== afterEn) changes.push({ id, labelJa: ja, labelEn: en, beforeJa, afterJa, beforeEn, afterEn });
     };
     push('cast-mode', '人数モード', 'Character count mode', previous?.enabled ? `${previous.members.length}人` : '1人', next?.enabled ? `${next.members.length}人` : '1人', previous?.enabled ? `${previous.members.length} people` : 'One person', next?.enabled ? `${next.members.length} people` : 'One person');
+    push('cast-relationship-note', '関係の補足', 'Relationship notes', previous?.relationshipNote ?? '', next?.relationshipNote ?? '');
     for (const [field, choices, ja, en] of [
       ['relationship', castRelationships, '人物同士の関係', 'Relationship'], ['interaction', castInteractions, '全員の動作', 'Group action'],
     ] as const) push(`cast-${field}`, ja, en, castChoiceLabel(choices, previous?.[field] ?? '', 'ja'), castChoiceLabel(choices, next?.[field] ?? '', 'ja'), castChoiceLabel(choices, previous?.[field] ?? '', 'en'), castChoiceLabel(choices, next?.[field] ?? '', 'en'));
@@ -139,13 +147,19 @@ export function diffSnapshots(before: CharacterSnapshot, after: CharacterSnapsho
       const newMember = next?.members.find((member) => member.id === id);
       const ja = `人物${index + 1}`;
       const en = `Person ${index + 1}`;
+      const start = changes.length;
       push(`cast-${id}-present`, ja, en, oldMember ? 'あり' : 'なし', newMember ? 'あり' : 'なし', oldMember ? 'Present' : 'None', newMember ? 'Present' : 'None');
       push(`cast-${id}-name`, `${ja}の識別名`, `${en} label`, oldMember?.name ?? '', newMember?.name ?? '');
+      push(`cast-${id}-name-en`, `${ja}の英語識別名`, `${en} English label`, oldMember?.nameEn ?? '', newMember?.nameEn ?? '');
       push(`cast-${id}-position`, `${ja}の配置`, `${en} placement`, castChoiceLabel(castPositions, oldMember?.position ?? '', 'ja'), castChoiceLabel(castPositions, newMember?.position ?? '', 'ja'), castChoiceLabel(castPositions, oldMember?.position ?? '', 'en'), castChoiceLabel(castPositions, newMember?.position ?? '', 'en'));
       const base = { ...after.draft, cast: undefined };
       const oldDraft = oldMember ? memberDraft(base, oldMember) : !previous && index === 0 ? { ...base, ...Object.fromEntries(PERSON_FIELDS.map((field) => [field, before.draft[field]])), custom: { ...base.custom, ...Object.fromEntries(PERSON_CUSTOM_KEYS.map((key) => [key, before.draft.custom[key] ?? ''])) }, generatedGap: before.draft.generatedGap } : blankPerson(base);
       const newDraft = newMember ? memberDraft(base, newMember) : !next && index === 0 ? base : blankPerson(base);
       changes.push(...diffSnapshots({ draft: oldDraft, locks: oldMember?.locks ?? {} }, { draft: newDraft, locks: newMember?.locks ?? {} }).map((change) => ({ ...change, id: `cast-${id}-${change.id}`, labelJa: `${ja}：${change.labelJa}`, labelEn: `${en}: ${change.labelEn}` })));
+      for (const change of changes.slice(start)) {
+        change.groupJa = `${ja}${newMember?.name || oldMember?.name ? ` · ${newMember?.name || oldMember?.name}` : ''}`;
+        change.groupEn = `${en}${newMember?.nameEn || newMember?.name || oldMember?.name ? ` · ${newMember?.nameEn || newMember?.name || oldMember?.name}` : ''}`;
+      }
     }
   }
   return changes;

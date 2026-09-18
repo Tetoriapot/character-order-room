@@ -3,6 +3,7 @@ import './safety-checks';
 import './style-pack-checks';
 import './camera-checks';
 import './cast-checks';
+import './cast-workflow-checks';
 import {
   accessories,
   backgrounds,

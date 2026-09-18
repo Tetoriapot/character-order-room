@@ -11,6 +11,14 @@ export type NoteWorkspace = {
   mergeMode: InferenceMergeMode;
 };
 
+export type PersonNoteWorkspaces = Record<string, NoteWorkspace>;
+
+export function parsePersonNotes(value: unknown): PersonNoteWorkspaces {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).filter(([key]) => /^[a-zA-Z0-9_-]{1,64}$/.test(key) && !['__proto__', 'constructor', 'prototype'].includes(key))
+    .map(([key, note]) => [key, parseNoteWorkspace(note)] as const).filter(([, note]) => note !== null)) as PersonNoteWorkspaces;
+}
+
 export const createEmptyNoteWorkspace = (): NoteWorkspace => ({
   note: '', level: 'standard', result: null, decisions: {}, mergeMode: 'overwrite',
 });

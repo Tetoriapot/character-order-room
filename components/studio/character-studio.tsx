@@ -108,7 +108,10 @@ import { buildPromptBlocks, generateStudioPrompts as generatePrompts } from '@/l
 import { findStylePreset } from '@/lib/style-pack';
 import { isSceneComposition } from '@/data/camera-expansion';
 import { CharacterCastPanel } from './character-cast-panel';
-import { castRandomLocks, isCastActive, syncCast } from '@/lib/character-cast';
+import { castRandomLocks, isCastActive, syncCast, PERSON_FIELDS, selectCastMember, setCastEnabled } from '@/lib/character-cast';
+import { resetPeople, personTemplate, castChecks, personName } from '@/lib/cast-workflow';
+import { CastOutputTools } from './cast-output-tools';
+import { PersonTransferDialog } from './person-transfer-dialog';
 import type { StylePackSelection } from '@/lib/style-pack-types';
 import { applyPurposeRecommendation } from '@/lib/purpose-engine';
 import {
@@ -122,7 +125,7 @@ import {
   parseStudioPreferences,
   STORAGE_KEYS,
 } from '@/lib/storage';
-import { createEmptyNoteWorkspace } from '@/lib/inference/note-workspace';
+import { createEmptyNoteWorkspace, type PersonNoteWorkspaces } from '@/lib/inference/note-workspace';
 import { useStudioAutosave } from '@/hooks/use-studio-autosave';
 import { exportStudioBackup, parseStudioBackup, parseAnyStudioImport, WORKSPACE_KEY, RECOVERY_KEY, MAX_BACKUP_BYTES, type StudioWorkspace, type StudioImport } from '@/lib/studio-backup';
 import { createShareUrl, prepareShareSnapshot, readShareUrl, shareCustomEntries, MAX_SHARE_URL_LENGTH } from '@/lib/share-snapshot';
@@ -261,6 +264,11 @@ const outputTabs: Array<{ value: StudioOutputMode; labelJa: string; labelEn: str
 ];
 
 const releaseNotes = [
+  {
+    date: '2026-09-19', titleJa: '複数人編集の安全性と受け渡しを改善', titleEn: 'Safer group editing and handoffs',
+    itemsJa: ['人物別・共通の設定メモ、反映先表示、表情とポーズの分離、範囲別リセットを追加。旧データとメモは引き継ぎます。', '人物一覧、複製、項目コピー、衣装テンプレート、選択人物の一括生成、関係の補足と英語識別名に対応。', 'コピー前の確認、人物別コピー、未変換文への移動、配置プリセット、必須・希望条件、変更メモ付き保存を追加。'],
+    itemsEn: ['Added per-person/shared notes, explicit editing scope, separate expression/pose notes, and scoped resets. Existing data is retained.', 'Added cast comparison, duplication, field transfer, outfit templates, selected-person randomization, relationship notes, and English labels.', 'Added copy review, per-person copying, untranslated-text navigation, layout presets, required/preferred directions, and version notes.'],
+  },
   {
     date: '2026-09-19', titleJa: '複数人数モード（2〜6人）', titleEn: 'Multiple-person mode (2–6 people)',
     itemsJa: ['人物ごとに外見・衣装・表情・ロックを編集し、配置・関係性・全員の動作を指定できます。', '画風・背景は共通。1人モードへ戻しても他の人物を保持し、保存・共有・履歴も全員分に対応しました。', 'おまかせは選択中の人物に反映。「人物は1人だけ」は複数人出力から除外し、識別名や自由入力は共有前に選べます。'],
@@ -499,6 +507,10 @@ export function CharacterStudio() {
   const [managerOpen, setManagerOpen] = useState(false);
   const [managerTab, setManagerTab] = useState<'presets' | 'history'>('presets');
   const [presetName, setPresetName] = useState('');
+  const [presetNote, setPresetNote] = useState('');
+  const [presetScope, setPresetScope] = useState<'all' | 'person' | 'outfit'>('all');
+  const [templateSource, setTemplateSource] = useState<{ snapshot: CharacterSnapshot; name: string; outfit: boolean } | null>(null);
+  const [quickStartOpen, setQuickStartOpen] = useState(false);
   const [managerQuery, setManagerQuery] = useState('');
   const [presetSort, setPresetSort] = useState<'recent' | 'used' | 'name'>('recent');
   const [userPresets, setUserPresets] = useState<SavedPreset[]>([]);
@@ -508,13 +520,17 @@ export function CharacterStudio() {
   const [storageReady, setStorageReady] = useState(false);
   const [storageLoadFailed, setStorageLoadFailed] = useState(false);
   const [noteWorkspace, setNoteWorkspace] = useState(createEmptyNoteWorkspace);
+  const [personNotes, setPersonNotes] = useState<PersonNoteWorkspaces>({});
+  const [noteScope, setNoteScope] = useState<'person' | 'shared'>('person');
   const [recoveryWorkspace, setRecoveryWorkspace] = useState<StudioWorkspace | null>(null);
   const [pendingImport, setPendingImport] = useState<{ data: StudioImport; name: string } | null>(null);
   const [incomingShare, setIncomingShare] = useState<CharacterSnapshot | null>(null);
   const [shareSource, setShareSource] = useState<CharacterSnapshot | null>(null);
   const [shareCustomKeys, setShareCustomKeys] = useState<string[]>([]);
+  const [pendingCopy, setPendingCopy] = useState<{ text: string; label: string; scope: string } | null>(null);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [guidedResetOpen, setGuidedResetOpen] = useState(false);
+  const [resetScope, setResetScope] = useState<'person' | 'people' | 'all'>('all');
   const [formSessionKey, setFormSessionKey] = useState(0);
   const [helpOpen, setHelpOpen] = useState(false);
   const [helpTab, setHelpTab] = useState<'guide' | 'shortcuts'>('guide');
@@ -524,8 +540,10 @@ export function CharacterStudio() {
   const [batchBase, setBatchBase] = useState<CharacterSnapshot | null>(null);
   const [renameTarget, setRenameTarget] = useState<SavedPreset | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  const [renameNote, setRenameNote] = useState('');
   const [historyRenameTarget, setHistoryRenameTarget] = useState<HistoryEntry | null>(null);
   const [historyRenameValue, setHistoryRenameValue] = useState('');
+  const [historyRenameNote, setHistoryRenameNote] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<SavedPreset | null>(null);
   const [announcement, setAnnouncement] = useState('');
   const [previewInView, setPreviewInView] = useState(false);
@@ -536,8 +554,8 @@ export function CharacterStudio() {
 
   const workspace = useMemo<StudioWorkspace>(() => ({
     current: { draft, locks }, presets: userPresets, history: historyItems,
-    randomHistory: randomHistoryItems, preferences, noteWorkspace, editorMode,
-  }), [draft, locks, userPresets, historyItems, randomHistoryItems, preferences, noteWorkspace, editorMode]);
+    randomHistory: randomHistoryItems, preferences, noteWorkspace, personNotes, editorMode,
+  }), [draft, locks, userPresets, historyItems, randomHistoryItems, preferences, noteWorkspace, personNotes, editorMode]);
   const autosave = useStudioAutosave(workspace, storageReady);
   const sharedSnapshot = useMemo(() => shareSource ? prepareShareSnapshot(shareSource, shareCustomKeys) : null, [shareSource, shareCustomKeys]);
   const shareUrl = sharedSnapshot && typeof window !== 'undefined' ? createShareUrl(window.location.href, sharedSnapshot) : '';
@@ -549,6 +567,7 @@ export function CharacterStudio() {
     setOutputMode(activeStylePreset ? 'blocks' : 'ja');
   }, [activeStylePreset]);
   const notices = useMemo(() => analyzePromptNotices(draft), [draft]);
+  const copyChecks = useMemo(() => castChecks({ draft, locks }), [draft, locks]);
   const profileOutput = useMemo(
     () => formatProfileOutput(outputs, draft, preferences.exportProfile),
     [draft, outputs, preferences.exportProfile],
@@ -557,7 +576,13 @@ export function CharacterStudio() {
   const language = preferences.language;
   const tr = useCallback((ja: string, en: string) => language === 'ja' ? ja : en, [language]);
   const activePersonNumber = isCastActive(draft) ? draft.cast!.members.findIndex((member) => member.id === draft.cast!.activeId) + 1 : 0;
-  const personStep = (step: number) => `STEP ${step}${activePersonNumber ? tr(` · 人物${activePersonNumber}`, ` · Person ${activePersonNumber}`) : ''}`;
+  const activeMember = draft.cast?.members.find((member) => member.id === draft.cast?.activeId);
+  const activePersonLabel = activeMember ? `${tr(`人物${draft.cast!.members.indexOf(activeMember) + 1}`, `Person ${draft.cast!.members.indexOf(activeMember) + 1}`)}${(language === 'en' ? activeMember.nameEn || activeMember.name : activeMember.name) ? ` · ${language === 'en' ? activeMember.nameEn || activeMember.name : activeMember.name}` : ''}` : tr('現在の人物', 'Current person');
+  const notePersonId = draft.purpose !== 'background' && noteScope === 'person' ? activeMember?.id ?? 'single' : undefined;
+  const scopedNote = notePersonId ? personNotes[notePersonId] ?? createEmptyNoteWorkspace() : noteWorkspace;
+  const noteTargetLabel = draft.purpose === 'background' || noteScope === 'shared' ? tr('全員共通：背景・構図・禁止事項', 'Shared: scene, framing, exclusions') : activePersonLabel;
+  const personStep = (step: number) => `STEP ${step}${activePersonNumber ? ` · ${activePersonLabel}` : ''}`;
+  const sharedStep = (step: number) => `STEP ${step}${activePersonNumber ? tr(' · 全員共通', ' · Shared') : ''}`;
   const lockCount = Object.values(locks).filter(Boolean).length;
   const activeGapLabel = draft.generatedGap
     ? draft.generatedGap.labelJa || '一部のギャップ要素（編集済み）'
@@ -580,7 +605,7 @@ export function CharacterStudio() {
     ? [guidedStepId]
     : visibleSections.map((section) => section.id);
   const sortedPresets = useMemo(() => userPresets
-    .filter((preset) => `${preset.name} ${snapshotSummary(preset.snapshot, language)}`.toLocaleLowerCase(language === 'ja' ? 'ja' : 'en').includes(managerQuery.trim().toLocaleLowerCase(language === 'ja' ? 'ja' : 'en')))
+    .filter((preset) => `${preset.name} ${preset.note ?? ''} ${snapshotSummary(preset.snapshot, language)}`.toLocaleLowerCase(language === 'ja' ? 'ja' : 'en').includes(managerQuery.trim().toLocaleLowerCase(language === 'ja' ? 'ja' : 'en')))
     .sort((left, right) => {
       if (Boolean(left.pinned) !== Boolean(right.pinned)) return left.pinned ? -1 : 1;
       if (presetSort === 'used') return (right.useCount ?? 0) - (left.useCount ?? 0);
@@ -588,7 +613,7 @@ export function CharacterStudio() {
       return new Date(right.lastUsedAt ?? right.updatedAt).getTime() - new Date(left.lastUsedAt ?? left.updatedAt).getTime();
     }), [language, managerQuery, presetSort, userPresets]);
   const filteredHistory = useMemo(() => historyItems.filter((item) =>
-    `${item.name ?? item.label} ${snapshotSummary(item.snapshot, language)}`.toLocaleLowerCase(language === 'ja' ? 'ja' : 'en')
+    `${item.name ?? item.label} ${item.note ?? ''} ${snapshotSummary(item.snapshot, language)}`.toLocaleLowerCase(language === 'ja' ? 'ja' : 'en')
       .includes(managerQuery.trim().toLocaleLowerCase(language === 'ja' ? 'ja' : 'en')),
   ).sort((left, right) => Number(Boolean(right.pinned)) - Number(Boolean(left.pinned))
     || new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()), [historyItems, language, managerQuery]);
@@ -626,6 +651,7 @@ export function CharacterStudio() {
       const loadedPreferences = savedWorkspace?.preferences ?? parseStudioPreferences(localStorage.getItem(STORAGE_KEYS.preferences));
       if (savedWorkspace) {
         setNoteWorkspace(savedWorkspace.noteWorkspace);
+        setPersonNotes(savedWorkspace.personNotes ?? { [savedWorkspace.current.draft.cast?.activeId ?? 'single']: savedWorkspace.noteWorkspace });
         setEditorMode(savedWorkspace.editorMode);
       }
       const returningUser = Boolean(savedCurrent || savedPresets.length || savedHistory.length);
@@ -700,6 +726,10 @@ export function CharacterStudio() {
     action: string,
     options: { coalesceKey?: string; historySource?: HistoryEntry['source']; announce?: string } = {},
   ) => {
+    if (!timeline.present.snapshot.draft.cast && next.draft.cast) {
+      const id = next.draft.cast.activeId;
+      setPersonNotes((current) => current[id] ? current : { ...current, [id]: current.single ?? noteWorkspace });
+    }
     const nextTimeline = commitEditorTimeline(timeline, syncCast(next), {
       action,
       coalesceKey: options.coalesceKey,
@@ -713,7 +743,7 @@ export function CharacterStudio() {
     setAnnouncement(options.announce ?? action);
     if (options.historySource) addHistory(action, nextTimeline.present.snapshot, options.historySource);
     return true;
-  }, [addHistory, timeline]);
+  }, [addHistory, timeline, noteWorkspace]);
 
   const recordRecent = useCallback((field: LockKey, id: string) => {
     if (!id) return;
@@ -893,6 +923,10 @@ export function CharacterStudio() {
     decisions: Record<string, InferenceDecision>,
     mergeMode: InferenceMergeMode,
   ) => {
+    const sharedOnly = draft.purpose === 'background' || noteScope === 'shared';
+    const scopeLocks = { ...locks, ...Object.fromEntries((Object.keys(fieldLabels) as LockKey[])
+      .filter((field) => sharedOnly ? PERSON_FIELDS.includes(field) : !PERSON_FIELDS.includes(field)).map((field) => [field, true])) };
+    result = { ...result, values: result.values.filter((value) => sharedOnly ? !PERSON_FIELDS.includes(value.category) : PERSON_FIELDS.includes(value.category)) };
     const dryRun = mergeInferenceIntoFormState(makeSnapshot(), result.values, decisions, mergeMode);
     if (!dryRun.report.applied.length) {
       const preserved = dryRun.report.skippedLocked.length + dryRun.report.skippedExisting.length;
@@ -932,7 +966,7 @@ export function CharacterStudio() {
       (changedValueFields.has('ageGroup') || changedValueFields.has('ageNumber'))
       && generatedGapConflictsWithAge(draft, dryRun.snapshot.draft.ageNumber, dryRun.snapshot.draft.ageGroup)
     ) {
-      baseDraft = clearGeneratedGap(draft, locks);
+      baseDraft = clearGeneratedGap(draft, scopeLocks);
     }
     for (const field of changedValueFields) {
       if (!locks[field] && generatedGapUsesField(baseDraft, field)) {
@@ -947,8 +981,8 @@ export function CharacterStudio() {
       mergeMode,
     );
     const nextDraft = resolveDraftConflicts(
-      reconcileGeneratedGapDerivedChanges(merged.snapshot.draft, locks),
-      locks,
+      reconcileGeneratedGapDerivedChanges(merged.snapshot.draft, scopeLocks),
+      scopeLocks,
     );
     const finalLocks = { ...merged.snapshot.locks };
     const requestedLocks = new Map<LockKey, string[]>();
@@ -1067,8 +1101,9 @@ export function CharacterStudio() {
 
   const startGuidedMode = (saveBackup = true) => {
     const previous = makeSnapshot();
-    const blank = createBlankSnapshot();
-    const action = tr('一から順に作成を開始', 'Started building step by step');
+    const scope = saveBackup ? resetScope : 'all';
+    const blank = scope === 'all' ? createBlankSnapshot() : resetPeople(previous, scope);
+    const action = scope === 'all' ? tr('一から順に作成を開始', 'Started building step by step') : tr(scope === 'person' ? `${activePersonLabel}の項目をリセット` : '全員の人物項目をリセット', scope === 'person' ? `Reset ${activePersonLabel}` : 'Reset all person fields');
     if (saveBackup && JSON.stringify(previous) !== JSON.stringify(blank)) {
       addHistory(
         tr('一から作る前の設定', 'Backup before starting from scratch'),
@@ -1081,24 +1116,24 @@ export function CharacterStudio() {
       setLastAction(action);
       setAnnouncement(action);
     }
-    setThemeId('');
+    if (scope === 'all') setThemeId('');
     setEditorMode('form');
     setBatchItems([]);
     setBatchOpen(false);
     setFormSessionKey((current) => current + 1);
     setPreferences((current) => ({
       ...current,
-      guidedMode: true,
-      guidedStep: 'purpose',
+      guidedMode: scope === 'all',
+      guidedStep: scope === 'all' ? 'purpose' : 'character',
     }));
-    setOpenSections(['purpose']);
+    setOpenSections([scope === 'all' ? 'purpose' : 'character']);
     setGuidedResetOpen(false);
     toast.add({
-      title: tr('すべて空欄にしました', 'Everything was cleared'),
-      description: tr('用途から順番に決められます。', 'Start with purpose and work through each section.'),
+      title: action,
+      description: tr('開始前の設定は履歴から復元できます。設定メモは保持しています。', 'Restore previous settings from history. Note drafts are kept.'),
       type: 'success',
     });
-    window.setTimeout(() => document.getElementById('purpose')
+    window.setTimeout(() => document.getElementById(scope === 'all' ? 'purpose' : 'character')
       ?.querySelector<HTMLElement>('button')?.focus({ preventScroll: true }), 80);
   };
 
@@ -1126,7 +1161,7 @@ export function CharacterStudio() {
     else if (direction === 1) finishGuidedMode();
   };
 
-  const copyText = async (text: string, label: string, saveHistory = true) => {
+  const performCopyText = async (text: string, label: string, saveHistory = true) => {
     try {
       if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
       await navigator.clipboard.writeText(text);
@@ -1138,14 +1173,20 @@ export function CharacterStudio() {
     }
   };
 
+  const copyText = async (text: string, label: string, saveHistory = true, scope?: string) => {
+    if (!saveHistory) return performCopyText(text, label, false);
+    setPendingCopy({ text, label, scope: scope ?? tr(draft.purpose === 'background' ? '背景のみ' : isCastActive(draft) ? `全体：${draft.cast!.members.length}人・共通設定` : '現在の人物：1人・共通設定', draft.purpose === 'background' ? 'Background only' : isCastActive(draft) ? `Whole brief: ${draft.cast!.members.length} people and shared settings` : 'Current person and shared settings') });
+  };
+
   const updateStylePack = (selection: StylePackSelection) => {
     commitSnapshot({ draft: { ...draft, stylePack: selection }, locks }, tr('画風・補助・ブロックを変更', 'Changed style, helpers, or blocks'), { historySource: 'manual' });
   };
 
   const copyOutput = (mode: StudioOutputMode = outputMode) => {
     const tab = outputTabs.find((item) => item.value === mode);
-    return copyText(outputs[mode], tr(`${tab?.labelJa ?? mode}をコピー`, `Copied ${tab?.labelEn ?? mode}`));
+    return copyText(outputs[mode], tr(`${tab?.labelJa ?? mode}をコピー`, `Copied ${tab?.labelEn ?? mode}`), true, mode === 'blocks' ? blockCopyScope : undefined);
   };
+  const blockCopyScope = `${tr('ブロック形式・含める範囲：', 'Block format · included: ')}${['CONTENT', 'STYLE', 'ANTI_AI', 'AVOID'].filter((key) => !draft.stylePack?.excludedBlocks.includes(key as 'CONTENT' | 'STYLE' | 'ANTI_AI' | 'AVOID')).join(', ')}${draft.stylePack?.excludedBlocks.includes('CONTENT') ? tr('（人物・背景の内容は含めません）', ' (person and scene content excluded)') : tr(`（${backgroundOnly ? 0 : isCastActive(draft) ? draft.cast!.members.length : 1}人）`, ` (${backgroundOnly ? 0 : isCastActive(draft) ? draft.cast!.members.length : 1} people)`)}`;
 
   const savePreset = () => {
     const name = presetName.trim().slice(0, 50);
@@ -1159,13 +1200,16 @@ export function CharacterStudio() {
       name,
       createdAt: now,
       updatedAt: now,
-      snapshot: makeSnapshot(),
+      snapshot: presetScope === 'all' ? makeSnapshot() : personTemplate(makeSnapshot(), presetScope),
+      scope: presetScope === 'all' ? undefined : presetScope,
+      note: presetNote.trim().slice(0, 240),
       pinned: false,
       useCount: 0,
     };
     setUserPresets((current) => [item, ...current]);
     addHistory(tr(`プリセット「${name}」を保存`, `Saved preset “${name}”`), item.snapshot, 'save');
     setPresetName('');
+    setPresetNote('');
     toast.add({ title: tr(`「${name}」を保存しました`, `Saved “${name}”`), type: 'success' });
   };
 
@@ -1183,6 +1227,11 @@ export function CharacterStudio() {
   };
 
   const loadPreset = (preset: SavedPreset) => {
+    if (preset.scope) {
+      setTemplateSource({ snapshot: preset.snapshot, name: preset.name, outfit: preset.scope === 'outfit' });
+      setManagerOpen(false);
+      return;
+    }
     const now = new Date().toISOString();
     const displayName = preset.builtIn && language === 'en' ? builtInPresetNamesEn[preset.id] ?? preset.name : preset.name;
     if (!preset.builtIn) {
@@ -1216,6 +1265,7 @@ export function CharacterStudio() {
   const renamePreset = (preset: SavedPreset) => {
     setRenameTarget(preset);
     setRenameValue(preset.name);
+    setRenameNote(preset.note ?? '');
   };
 
   const deletePreset = (preset: SavedPreset) => {
@@ -1226,7 +1276,7 @@ export function CharacterStudio() {
     if (!renameTarget) return;
     const name = renameValue.trim().slice(0, 50);
     if (!name) return;
-    setUserPresets((current) => current.map((item) => item.id === renameTarget.id ? { ...item, name, updatedAt: new Date().toISOString() } : item));
+    setUserPresets((current) => current.map((item) => item.id === renameTarget.id ? { ...item, name, note: renameNote.trim().slice(0, 240), updatedAt: new Date().toISOString() } : item));
     setRenameTarget(null);
     toast.add({ title: tr('名前を変更しました', 'Preset renamed'), type: 'success' });
   };
@@ -1249,13 +1299,14 @@ export function CharacterStudio() {
   const renameHistory = (entry: HistoryEntry) => {
     setHistoryRenameTarget(entry);
     setHistoryRenameValue(entry.name ?? entry.label);
+    setHistoryRenameNote(entry.note ?? '');
   };
 
   const confirmHistoryRename = () => {
     if (!historyRenameTarget) return;
     const name = historyRenameValue.trim().slice(0, 80);
     if (!name) return;
-    setHistoryItems((current) => current.map((item) => item.id === historyRenameTarget.id ? { ...item, name } : item));
+    setHistoryItems((current) => current.map((item) => item.id === historyRenameTarget.id ? { ...item, name, note: historyRenameNote.trim().slice(0, 240) } : item));
     setHistoryRenameTarget(null);
     toast.add({ title: tr('履歴に名前を付けました', 'History item renamed'), type: 'success' });
   };
@@ -1265,6 +1316,7 @@ export function CharacterStudio() {
 
   const customField = (label: string, key: string, placeholder: string) => (
     <Input
+      id={`custom-${key}`}
       aria-label={label}
       value={draft.custom[key] ?? ''}
       onChange={(event) => updateCustom(key, event.target.value)}
@@ -1277,12 +1329,25 @@ export function CharacterStudio() {
   const activeTab = outputTabs.find((tab) => tab.value === outputMode);
   const activeTabLabel = language === 'ja' ? activeTab?.labelJa ?? '' : activeTab?.labelEn ?? '';
 
+  const jumpToInput = (personId: string | undefined, key: string) => {
+    if (personId) commitSnapshot(selectCastMember(makeSnapshot(), personId), tr('指定の人物を編集中', 'Editing the requested person'));
+    setEditorMode('form');
+    setPreferences((current) => ({ ...current, guidedMode: false, simpleMode: false }));
+    const section = ({ expression: 'action', pose: 'action', must: 'negative', preference: 'negative', layout: 'camera', negatives: 'negative' } as Record<string, string>)[key] ?? key;
+    setOpenSections((current) => [...new Set([...current, section])]);
+    window.setTimeout(() => {
+      const target = document.getElementById(`custom-${key}`) ?? document.getElementById(`cast-${key}`) ?? document.getElementById(section);
+      target?.scrollIntoView({ block: 'center', behavior: 'auto' });
+      target?.focus({ preventScroll: true });
+    }, 100);
+  };
+
   const downloadJson = (text: string, prefix: string) => {
     const blob = new Blob([text], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
-    anchor.download = `${prefix}-${new Date().toISOString().slice(0, 10)}.json`;
+    anchor.download = `${prefix}-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
     anchor.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     toast.add({ title: tr('JSONを書き出しました', 'JSON exported'), type: 'success' });
@@ -1334,6 +1399,7 @@ export function CharacterStudio() {
     setRandomHistoryItems(next.randomHistory);
     setPreferences(next.preferences);
     setNoteWorkspace(next.noteWorkspace);
+    setPersonNotes(next.personNotes ?? { [next.current.draft.cast?.activeId ?? 'single']: next.noteWorkspace });
     setEditorMode(next.editorMode);
     setPendingImport(null);
     setLastAction(tr('確認したデータを読み込みました', 'Imported the reviewed data'));
@@ -1427,6 +1493,14 @@ export function CharacterStudio() {
   };
 
   useEffect(() => {
+    const header = document.querySelector('header');
+    if (!header) return;
+    const observer = new ResizeObserver(() => document.documentElement.style.setProperty('--studio-header-height', `${header.getBoundingClientRect().height}px`));
+    observer.observe(header);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
     const preview = document.getElementById('prompt-preview');
     if (!preview || typeof IntersectionObserver === 'undefined') return;
     const observer = new IntersectionObserver(
@@ -1441,7 +1515,7 @@ export function CharacterStudio() {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       const editable = Boolean(target?.closest('input, textarea, select, [contenteditable="true"]'));
-      const modalOpen = managerOpen || onboardingOpen || guidedResetOpen || helpOpen || changelogOpen || batchOpen || Boolean(renameTarget) || Boolean(historyRenameTarget) || Boolean(deleteTarget) || Boolean(shareSource) || Boolean(incomingShare) || Boolean(pendingImport);
+      const modalOpen = Boolean(document.querySelector('[role="dialog"], [role="alertdialog"]')) || Boolean(pendingCopy) || managerOpen || onboardingOpen || guidedResetOpen || helpOpen || changelogOpen || batchOpen || Boolean(renameTarget) || Boolean(historyRenameTarget) || Boolean(deleteTarget) || Boolean(shareSource) || Boolean(incomingShare) || Boolean(pendingImport);
       if (!editable && !modalOpen && event.altKey && /^[1-9]$/.test(event.key)) {
         const section = visibleSections[Number(event.key) - 1];
         if (section) {
@@ -1650,15 +1724,35 @@ export function CharacterStudio() {
                 </div>
               )}
               <CharacterCastPanel snapshot={{ draft, locks }} language={language} onChange={(next, action, coalesceKey) => commitSnapshot(next, action, { coalesceKey })} />
+              {!preferences.guidedMode && <Button variant="outline" className="mb-4 min-h-11 w-full" onClick={() => setQuickStartOpen(true)}>{tr('3項目で始める：用途・人数・画風', 'Quick start: purpose, people, style')}</Button>}
+              {activePersonNumber > 0 && <div className="sticky top-[var(--studio-header-height,72px)] z-20 mb-4 rounded-xl border border-primary/30 bg-card/95 p-3 shadow-sm backdrop-blur">
+                <label className="flex flex-wrap items-center gap-2 text-sm font-bold">{tr('編集中', 'Editing')}
+                  <Select value={draft.cast!.activeId} onValueChange={(id) => { if (id) { const next = selectCastMember(makeSnapshot(), id); commitSnapshot(next, tr('編集する人物を切替', 'Changed person to edit'), { announce: `${tr('編集中', 'Editing')}: ${personName(next, language)}` }); } }}>
+                    <SelectTrigger aria-label={tr('編集中の人物を切り替え', 'Switch the person being edited')} className="min-h-11 min-w-0 flex-1"><SelectValue>{activePersonLabel}</SelectValue></SelectTrigger>
+                    <SelectContent>{draft.cast!.members.map((member, index) => <SelectItem key={member.id} value={member.id}>{tr(`人物${index + 1}`, `Person ${index + 1}`)}{(language === 'en' ? member.nameEn || member.name : member.name) ? ` · ${language === 'en' ? member.nameEn || member.name : member.name}` : ''}</SelectItem>)}</SelectContent>
+                  </Select>
+                </label>
+                <p className="mt-1 text-sm text-muted-foreground">{tr('外見・衣装・表情はこの人物のみ。画風・カメラ・背景は全員共通。', 'Appearance, outfit, expression: this person. Style, camera, scene: shared.')}</p>
+              </div>}
               {!preferences.guidedMode && (
                 <div id="editor-panel-note" role="tabpanel" aria-labelledby="editor-tab-note" hidden={editorMode !== 'note'}>
+                  <div className="mb-4 flex flex-wrap gap-2" role="group" aria-label={tr('メモの反映先', 'Note destination')}>
+                    {draft.purpose !== 'background' && <Button variant={noteScope === 'person' ? 'default' : 'outline'} className="h-auto min-h-11 whitespace-normal" onClick={() => setNoteScope('person')}>{activePersonLabel}{tr('の設定メモ', ' note')}</Button>}
+                    <Button variant={noteScope === 'shared' || draft.purpose === 'background' ? 'default' : 'outline'} className="min-h-11" onClick={() => setNoteScope('shared')}>{tr('全員共通の設定メモ', 'Shared scene note')}</Button>
+                  </div>
                   <CharacterNoteInferencePanel
+                    key={`${notePersonId ?? 'shared'}-${noteScope}-${draft.purpose === 'background'}`}
                     language={language}
                     draft={draft}
                     locks={locks}
                     onApply={applyNoteInference}
-                    workspace={noteWorkspace}
-                    onWorkspaceChange={setNoteWorkspace}
+                    targetLabel={noteTargetLabel}
+                    personOnly={draft.purpose !== 'background' && noteScope === 'person'}
+                    workspace={scopedNote}
+                    onWorkspaceChange={(value) => {
+                      if (notePersonId) setPersonNotes((current) => ({ ...current, [notePersonId]: typeof value === 'function' ? value(current[notePersonId] ?? createEmptyNoteWorkspace()) : value }));
+                      else setNoteWorkspace(value);
+                    }}
                   />
                 </div>
               )}
@@ -1787,7 +1881,7 @@ export function CharacterStudio() {
                   setOpenSections(next);
                 }}
               >
-                <StudioSection hidden={!displayedSectionIds.includes('purpose')} value="purpose" icon={<Sparkles />} eyebrow="STEP 1" title={tr('何に使うイラスト？', 'What is this illustration for?')} summary={language === 'ja' ? labelFor('purpose', draft.purpose) : englishFor('purpose', draft.purpose)}>
+                <StudioSection hidden={!displayedSectionIds.includes('purpose')} value="purpose" icon={<Sparkles />} eyebrow={sharedStep(1)} title={tr('何に使うイラスト？', 'What is this illustration for?')} summary={language === 'ja' ? labelFor('purpose', draft.purpose) : englishFor('purpose', draft.purpose)}>
                   <p className="mb-4 text-sm leading-relaxed text-muted-foreground">{tr(preferences.guidedMode ? '用途だけを選びます。構図・縦横比・禁止事項は後のステップで自分で決められます。' : '用途を選ぶと構図・縦横比・禁止事項のおすすめを自動設定します。ロック中の項目は変更しません。', preferences.guidedMode ? 'This step selects only the purpose. You will choose composition, aspect ratio, and exclusions later.' : 'Choosing a purpose applies recommended composition, aspect ratio, and exclusions. Locked fields stay unchanged.')}</p>
                   <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
                     {purposes.map((purpose) => {
@@ -1810,7 +1904,7 @@ export function CharacterStudio() {
                   <div className="mt-4">{customField(tr('用途の補足・自由設定', 'Purpose notes'), 'purpose', tr('用途の補足・自由設定', 'Add purpose-specific notes'))}</div>
                 </StudioSection>
 
-                <StudioSection hidden={!displayedSectionIds.includes('style')} value="style" icon={<Palette />} eyebrow="STEP 2" title={tr('絵柄と仕上げ', 'Style and finish')} summary={activeStylePreset ? tr(`${activeStylePreset.nameJa}・補助${draft.stylePack?.antiAiIds.length ?? 0}件`, `${activeStylePreset.nameEn} · ${draft.stylePack?.antiAiIds.length ?? 0} helpers`) : tr(`${labelFor('style', draft.style)}・${draft.styleTraits.length}個の追加要素`, `${englishFor('style', draft.style)} · ${draft.styleTraits.length} details`)}>
+                <StudioSection hidden={!displayedSectionIds.includes('style')} value="style" icon={<Palette />} eyebrow={sharedStep(2)} title={tr('絵柄と仕上げ', 'Style and finish')} summary={activeStylePreset ? tr(`${activeStylePreset.nameJa}・補助${draft.stylePack?.antiAiIds.length ?? 0}件`, `${activeStylePreset.nameEn} · ${draft.stylePack?.antiAiIds.length ?? 0} helpers`) : tr(`${labelFor('style', draft.style)}・${draft.styleTraits.length}個の追加要素`, `${englishFor('style', draft.style)} · ${draft.styleTraits.length} details`)}>
                   <StylePackPanel
                     selection={draft.stylePack}
                     language={language}
@@ -1892,18 +1986,32 @@ export function CharacterStudio() {
                     <FormRow label={tr('ポーズ', 'Pose')} actions={fieldActions('pose', tr('ポーズ', 'Pose'))}><SingleSelect {...catalogProps('pose')} label={tr('ポーズ', 'Pose')} value={draft.pose} options={poses} onChange={(value) => updateField('pose', value)} /></FormRow>
                     <FormRow label={tr('視線', 'Gaze')} actions={fieldActions('gaze', tr('視線', 'Gaze'))}><SingleSelect language={language} label={tr('視線', 'Gaze')} value={draft.gaze} options={gazes} onChange={(value) => updateField('gaze', value)} /></FormRow>
                   </div>
-                  <div className="mt-3">{customField(tr('表情・ポーズの自由設定', 'Custom pose direction'), 'action', tr('例：指先で古い手紙をつまんでいる', 'e.g. holding an old letter delicately by the fingertips'))}</div>
+                  <div className="mt-3 space-y-3">
+                    <FormRow label={tr('表情の自由設定', 'Custom expression')} hint={tr('全員の動作を選んでも出力します', 'Included even with a group action')}>{customField(tr('表情の自由設定', 'Custom expression'), 'expression', tr('例：涙をこらえた微笑み', 'e.g. smiling through tears'))}</FormRow>
+                    <FormRow label={tr('ポーズの自由設定', 'Custom pose')} hint={tr('全員の動作を選ぶと、保持したまま出力から外します', 'Kept but omitted when a group action is selected')}>{customField(tr('ポーズの自由設定', 'Custom pose'), 'pose', tr('例：古い手紙をつまんでいる', 'e.g. holding an old letter'))}</FormRow>
+                    {draft.custom.action && <FormRow label={tr('旧・表情／ポーズメモ', 'Legacy expression / pose note')} hint={tr('内容を失わないよう出力を継続します。必要に応じて上の2欄へ分けてください。', 'Kept in output to avoid losing your direction. Split it into the fields above when needed.')}>{customField(tr('旧・表情／ポーズメモ', 'Legacy expression / pose note'), 'action', '')}</FormRow>}
+                  </div>
                 </StudioSection>
 
-                <StudioSection hidden={!displayedSectionIds.includes('camera')} value="camera" icon={<Camera />} eyebrow={backgroundOnly ? 'STEP 3' : 'STEP 7'} title={tr('カメラと構図', 'Camera and composition')} summary={tr(`${labelFor('cameraAngle', draft.cameraAngle)}・${labelFor('composition', draft.composition)}・${labelFor('aspectRatio', draft.aspectRatio)}`, `${englishFor('cameraAngle', draft.cameraAngle)} · ${englishFor('composition', draft.composition)} · ${englishFor('aspectRatio', draft.aspectRatio)}`)}>
+                <StudioSection hidden={!displayedSectionIds.includes('camera')} value="camera" icon={<Camera />} eyebrow={sharedStep(backgroundOnly ? 3 : 7)} title={tr('カメラと構図', 'Camera and composition')} summary={tr(`${labelFor('cameraAngle', draft.cameraAngle)}・${labelFor('composition', draft.composition)}・${labelFor('aspectRatio', draft.aspectRatio)}`, `${englishFor('cameraAngle', draft.cameraAngle)} · ${englishFor('composition', draft.composition)} · ${englishFor('aspectRatio', draft.aspectRatio)}`)}>
                   <div className="grid gap-3 sm:grid-cols-2">
                     {!backgroundOnly && <FormRow label={tr('カメラ角度', 'Camera angle')} hint={tr(`${cameraAngles.length}種から1つ。左右は人物を基準にしたカメラの位置です。`, `Choose one of ${cameraAngles.length}. Left and right describe the camera position relative to the subject.`)} actions={fieldActions('cameraAngle', tr('カメラ角度', 'Camera angle'))}><SingleSelect {...catalogProps('cameraAngle')} searchable label={tr('カメラ角度', 'Camera angle')} value={draft.cameraAngle} options={cameraAngles} onChange={(value) => updateField('cameraAngle', value)} /></FormRow>}
                     <FormRow label={tr('構図', 'Composition')} hint={tr(backgroundOnly ? '背景にも使える配置・余白・奥行きから選びます。保持中の人物用構図は出力されません。' : `${compositions.length}種から1つ。写す範囲・配置・余白・奥行きで絞れます。`, backgroundOnly ? 'Choose scene-compatible placement, space, or depth. Retained portrait-only framing is not output.' : `Choose one of ${compositions.length}. Filter by framing, placement, space, or depth.`)} actions={fieldActions('composition', tr('構図', 'Composition'))}><SingleSelect {...catalogProps('composition')} searchable label={tr('構図', 'Composition')} value={draft.composition} options={backgroundOnly ? compositions.filter((choice) => isSceneComposition(choice.id) || choice.id === draft.composition) : compositions} onChange={(value) => updateField('composition', value)} /></FormRow>
                     <FormRow label={tr('画面の縦横', 'Aspect ratio')} actions={fieldActions('aspectRatio', tr('画面の縦横', 'Aspect ratio'))}><SingleSelect language={language} label={tr('画面の縦横', 'Aspect ratio')} value={draft.aspectRatio} options={aspectRatios} onChange={(value) => updateField('aspectRatio', value)} /></FormRow>
                   </div>
+                  <div className="mt-4 rounded-xl border border-border p-3">
+                    <p className="text-sm font-bold">{tr('SNS用の配置・余白プリセット', 'Social layout presets')}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">{tr('構図と余白メモを変更します。複数人の場合は全員を選んだ側へ配置します。文字そのものは追加しません。', 'Changes framing and the space note. In group mode, all people move to the selected side. No text is added.')}</p>
+                    <div className="mt-3 flex flex-wrap gap-2">{(['right', 'left'] as const).map((space) => <Button key={space} variant="outline" className="h-auto min-h-11 whitespace-normal" disabled={Boolean(locks.composition)} onClick={() => {
+                      const current = syncCast(makeSnapshot());
+                      const side = space === 'right' ? 'left' : 'right';
+                      commitSnapshot({ ...current, draft: { ...current.draft, composition: `space-${space}`, custom: { ...current.draft.custom, layout: `Keep the ${space} side empty for text to be added later. Do not render any text.` }, cast: isCastActive(current.draft) ? { ...current.draft.cast!, members: current.draft.cast!.members.map((member) => ({ ...member, position: side })) } : current.draft.cast } }, tr('配置・余白プリセットを適用', 'Applied a layout preset'));
+                    }}>{space === 'right' ? tr('人物は左・文字用余白は右', 'People left · text space right') : tr('人物は右・文字用余白は左', 'People right · text space left')}</Button>)}</div>
+                    <div className="mt-3">{customField(tr('配置・余白の補足', 'Layout and space notes'), 'layout', tr('余白の使い方など', 'How to use the empty space'))}</div>
+                  </div>
                 </StudioSection>
 
-                <StudioSection hidden={!displayedSectionIds.includes('scene')} value="scene" icon={<Trees />} eyebrow={backgroundOnly ? 'STEP 4' : 'STEP 8'} title={tr('背景・時間・光', 'Background, time, and light')} summary={tr(`${labelFor('background', draft.background)}・${labelFor('timeOfDay', draft.timeOfDay)}・${draft.lighting.length}個の光演出`, `${englishFor('background', draft.background)} · ${englishFor('timeOfDay', draft.timeOfDay)} · ${draft.lighting.length} effects`)}>
+                <StudioSection hidden={!displayedSectionIds.includes('scene')} value="scene" icon={<Trees />} eyebrow={sharedStep(backgroundOnly ? 4 : 8)} title={tr('背景・時間・光', 'Background, time, and light')} summary={tr(`${labelFor('background', draft.background)}・${labelFor('timeOfDay', draft.timeOfDay)}・${draft.lighting.length}個の光演出`, `${englishFor('background', draft.background)} · ${englishFor('timeOfDay', draft.timeOfDay)} · ${draft.lighting.length} effects`)}>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <FormRow label={tr('背景', 'Background')} actions={fieldActions('background', tr('背景', 'Background'))}><SingleSelect {...catalogProps('background')} label={tr('背景', 'Background')} value={draft.background} options={backgrounds} onChange={(value) => updateField('background', value)} /></FormRow>
                     <FormRow label={tr('時間帯', 'Time of day')} actions={fieldActions('timeOfDay', tr('時間帯', 'Time of day'))}><SingleSelect language={language} label={tr('時間帯', 'Time of day')} value={draft.timeOfDay} options={timesOfDay} onChange={(value) => updateField('timeOfDay', value)} /></FormRow>
@@ -1914,11 +2022,12 @@ export function CharacterStudio() {
                   <div className="mt-3">{customField(tr('背景・光の自由設定', 'Custom scene direction'), 'scene', tr('例：窓の外に小雨、雨粒がボケて輝く', 'e.g. light rain outside the window, droplets glowing in bokeh'))}</div>
                 </StudioSection>
 
-                <StudioSection hidden={!displayedSectionIds.includes('negative')} value="negative" icon={<Ban />} eyebrow={backgroundOnly ? 'STEP 5' : 'STEP 9'} title={tr('避けたい要素', 'Elements to avoid')} summary={tr(`${draft.negatives.length}個を指定中`, `${draft.negatives.length} selected`)}>
+                <StudioSection hidden={!displayedSectionIds.includes('negative')} value="negative" icon={<Ban />} eyebrow={sharedStep(backgroundOnly ? 5 : 9)} title={tr('避けたい要素', 'Elements to avoid')} summary={tr(`${draft.negatives.length}個を指定中`, `${draft.negatives.length} selected`)}>
                   <FormRow label={tr('禁止事項・ネガティブ', 'Negative prompt / exclusions')} hint={tr('選んだ内容は通常の描写と分けて出力します', 'These are output separately from positive directions')} actions={fieldActions('negatives', tr('禁止事項', 'Exclusions'))}>
                     <ChoiceChips {...catalogProps('negatives')} label={tr('禁止事項・ネガティブ', 'Negative prompt / exclusions')} options={negatives} selected={draft.negatives} onChange={(value) => updateField('negatives', value)} limit={15} />
                   </FormRow>
-                  <Textarea aria-label={tr('独自の禁止事項', 'Custom exclusions')} value={draft.custom.negatives ?? ''} onChange={(event) => updateCustom('negatives', event.target.value)} onBlur={() => addHistory(tr('独自の禁止事項を編集', 'Edited custom exclusions'), makeSnapshot(), 'manual')} placeholder={tr('独自の禁止事項を、句点または改行で入力', 'Enter custom exclusions separated by punctuation or new lines')} className="mt-3 min-h-24 rounded-xl bg-card text-sm" />
+                  <Textarea id="custom-negatives" aria-label={tr('独自の禁止事項', 'Custom exclusions')} value={draft.custom.negatives ?? ''} onChange={(event) => updateCustom('negatives', event.target.value)} onBlur={() => addHistory(tr('独自の禁止事項を編集', 'Edited custom exclusions'), makeSnapshot(), 'manual')} placeholder={tr('独自の禁止事項を、句点または改行で入力', 'Enter custom exclusions separated by punctuation or new lines')} className="mt-3 min-h-24 rounded-xl bg-card text-sm" />
+                  <div className="mt-4 grid gap-3"><FormRow label={tr('必須条件（全員共通）', 'Must-haves (shared)')}>{customField(tr('必須条件', 'Must-haves'), 'must', tr('例：衣装のロゴを入れない', 'e.g. no logos on clothing'))}</FormRow><FormRow label={tr('希望条件（可能なら）', 'Preferences (if possible)')}>{customField(tr('希望条件', 'Preferences'), 'preference', tr('例：夕方の柔らかな雰囲気', 'e.g. a soft evening mood'))}</FormRow></div>
                 </StudioSection>
               </Accordion>
               {preferences.guidedMode && (
@@ -1946,6 +2055,7 @@ export function CharacterStudio() {
                 <Badge variant="outline" className="gap-1.5 border-success/25 bg-success/10 text-success"><span className="size-1.5 rounded-full bg-success" />{tr('自動更新', 'Auto-updated')}</Badge>
               </div>
 
+              <CastOutputTools snapshot={{ draft, locks }} language={language} onJump={jumpToInput} onCopy={(text, label, scope) => { void copyText(text, label, true, scope); }} />
               <div className="mt-4 overflow-hidden rounded-[22px] border border-border bg-card shadow-[0_14px_38px_rgba(78,42,68,0.08)]">
                 <Tabs value={outputMode} onValueChange={(value) => setOutputMode(value as StudioOutputMode)} className="gap-0">
                   <div className="border-b border-border px-2 pt-2 pb-1">
@@ -1956,7 +2066,7 @@ export function CharacterStudio() {
                   {outputTabs.map((tab) => (
                     <TabsContent key={tab.value} value={tab.value} className="min-h-[330px] p-5">
                       <p className="mb-4 rounded-xl bg-muted/55 p-3 text-sm text-muted-foreground">{language === 'ja' ? tab.hintJa : tab.hintEn}</p>
-                      {tab.value === 'blocks' ? (activeStylePreset && draft.stylePack ? <PromptBlockPreview blocks={promptBlocks} selection={draft.stylePack} language={language} onChange={updateStylePack} onCopy={(text, label) => { void copyText(text, label); }} /> : <p className="rounded-xl border border-dashed border-border p-5 text-sm text-muted-foreground">{tr('STEP 2「絵柄と仕上げ」の画風ライブラリから1つ選ぶと、ブロック形式を使えます。従来の絵柄設定は日本語・Englishなどのタブで確認できます。', 'Select a style from the STEP 2 library to use block output. Classic styles remain available in Japanese, English, and the other tabs.')}</p>) : !outputs[tab.value] ? (
+                      {tab.value === 'blocks' ? (activeStylePreset && draft.stylePack ? <PromptBlockPreview blocks={promptBlocks} selection={draft.stylePack} language={language} onChange={updateStylePack} onCopy={(text, label) => { void copyText(text, label, true, blockCopyScope); }} /> : <p className="rounded-xl border border-dashed border-border p-5 text-sm text-muted-foreground">{tr('STEP 2「絵柄と仕上げ」の画風ライブラリから1つ選ぶと、ブロック形式を使えます。従来の絵柄設定は日本語・Englishなどのタブで確認できます。', 'Select a style from the STEP 2 library to use block output. Classic styles remain available in Japanese, English, and the other tabs.')}</p>) : !outputs[tab.value] ? (
                         <div className="grid min-h-48 place-items-center rounded-2xl border border-dashed border-border bg-muted/20 p-6 text-center">
                           <div><FileText className="mx-auto size-7 text-muted-foreground/45" /><p className="mt-3 text-sm font-bold">{tr('まだ要素が選ばれていません', 'No details selected yet')}</p><p className="mt-1 text-sm text-muted-foreground">{tr('入力した内容だけが、ここに順番に表示されます。', 'Only the details you choose will appear here.')}</p></div>
                         </div>
@@ -1982,7 +2092,7 @@ export function CharacterStudio() {
                   {(outputMode === 'ja' || outputMode === 'en') && (
                     <div className="mt-2 grid grid-cols-2 gap-2">
                       <Button variant="outline" size="sm" className="min-h-11 rounded-xl bg-card" disabled={!(outputMode === 'ja' ? outputs.positiveJa : outputs.positiveEn)} onClick={() => copyText(outputMode === 'ja' ? outputs.positiveJa : outputs.positiveEn, tr('肯定側をコピー', 'Copied positive prompt'))}>{tr('肯定だけ', 'Positive only')}</Button>
-                      <Button variant="outline" size="sm" className="min-h-11 rounded-xl bg-card" disabled={!(outputMode === 'ja' ? outputs.negativeJa : outputs.negativeEn)} onClick={() => copyText(outputMode === 'ja' ? outputs.negativeJa : outputs.negativeEn, tr('制約側をコピー', 'Copied negative prompt'))}>{tr('制約だけ', 'Negative only')}</Button>
+                      <Button variant="outline" size="sm" className="min-h-11 rounded-xl bg-card" disabled={!(outputMode === 'ja' ? outputs.negativeJa : outputs.negativeEn)} onClick={() => copyText(outputMode === 'ja' ? outputs.negativeJa : outputs.negativeEn, tr('制約側をコピー', 'Copied negative prompt'), true, tr('共通の制約のみ。人物・画風の肯定指定は含めません。', 'Shared constraints only. No positive person or style directions.'))}>{tr('制約だけ', 'Negative only')}</Button>
                     </div>
                   )}
                   <div className="mt-2 flex items-center justify-between px-1 text-sm text-muted-foreground">
@@ -2009,7 +2119,7 @@ export function CharacterStudio() {
                 <p className="mt-3 text-sm text-muted-foreground">{language === 'ja' ? profileOutput.hintJa : profileOutput.hintEn}</p>
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   <Button variant="outline" size="sm" className="min-h-11 rounded-xl" disabled={!profileOutput.positive} onClick={() => copyText(profileOutput.positive, tr('肯定側をコピー', 'Copied positive prompt'))}>{tr('肯定側をコピー', 'Copy positive')}</Button>
-                  <Button variant="outline" size="sm" className="min-h-11 rounded-xl" disabled={!profileOutput.negative} onClick={() => copyText(profileOutput.negative, tr('制約側をコピー', 'Copied negative prompt'))}>{tr('制約側をコピー', 'Copy negative')}</Button>
+                  <Button variant="outline" size="sm" className="min-h-11 rounded-xl" disabled={!profileOutput.negative} onClick={() => copyText(profileOutput.negative, tr('制約側をコピー', 'Copied negative prompt'), true, tr('共通の制約のみ。人物・画風の肯定指定は含めません。', 'Shared constraints only. No positive person or style directions.'))}>{tr('制約側をコピー', 'Copy negative')}</Button>
                 </div>
               </div>
 
@@ -2030,7 +2140,7 @@ export function CharacterStudio() {
               {hasUserCustomInput && (
                 <div className="mt-3 rounded-2xl border border-amber-500/20 bg-amber-500/8 p-3.5">
                   <p className="flex items-center gap-2 text-sm font-bold text-amber-800 dark:text-amber-300"><Lightbulb className="size-3.5" />{tr('自由入力も末尾に保持します', 'Custom text is preserved')}</p>
-                  <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{tr(draft.purpose === 'background' ? '背景用途では「スタイル」と「背景」の自由入力だけを出力します。' : '既知の語句は端末内辞書で英語化し、未変換部分は原文のまま残して上で知らせます。', draft.purpose === 'background' ? 'Background mode outputs only style and scene custom text.' : 'Known phrases are translated locally; untranslated Japanese remains as entered and is flagged above.')}</p>
+                  <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{tr(draft.purpose === 'background' ? '背景用途では人物の自由入力を除き、画風・背景・配置・必須／希望条件を出力します。' : '既知の語句は端末内辞書で英語化し、未変換部分は原文のまま残して上で知らせます。', draft.purpose === 'background' ? 'Background mode excludes person notes and includes style, scene, layout, and required/preferred directions.' : 'Known phrases are translated locally; untranslated Japanese remains as entered and is flagged above.')}</p>
                 </div>
               )}
 
@@ -2063,6 +2173,33 @@ export function CharacterStudio() {
           </Button>
         ) : null}
       </main>
+
+      {templateSource && <PersonTransferDialog source={templateSource.snapshot} target={makeSnapshot()} language={language} title={tr(`「${templateSource.name}」から反映`, `Apply from “${templateSource.name}”`)} outfitOnly={templateSource.outfit} onClose={() => setTemplateSource(null)} onApply={(next) => commitSnapshot(next, tr('テンプレートの指定項目を反映', 'Applied selected template fields'), { historySource: 'load' })} />}
+
+      <Dialog open={quickStartOpen} onOpenChange={setQuickStartOpen}>
+        <DialogContent className="flex max-h-[90dvh] flex-col overflow-hidden sm:max-w-xl">
+          <DialogHeader><DialogTitle>{tr('3項目から始める', 'Start with three choices')}</DialogTitle><DialogDescription>{tr('変更はすぐに反映されます。その他の入力は保持し、未入力ならそのまま進めます。あとからすべて編集できます。', 'Changes apply immediately. Other entries are kept; blank fields are optional. Everything remains editable.')}</DialogDescription></DialogHeader>
+          <div className="min-h-0 space-y-4 overflow-y-auto">
+            <FormRow label={tr('1. 用途', '1. Purpose')}><SingleSelect language={language} label={tr('かんたん開始の用途', 'Quick-start purpose')} value={draft.purpose} options={purposes} onChange={(value) => commitSnapshot({ draft: { ...draft, purpose: value }, locks }, tr('開始用途を変更', 'Changed starting purpose'))} /></FormRow>
+            <fieldset><legend className="mb-2 text-sm font-semibold">{tr('2. 人数', '2. People')}</legend><div className="flex flex-wrap gap-2"><Button variant={!draft.cast?.enabled ? 'default' : 'outline'} className="min-h-11" onClick={() => commitSnapshot(setCastEnabled(makeSnapshot(), false), tr('1人モードに切替', 'Switched to one person'))}>{tr('1人', 'One person')}</Button><Button variant={draft.cast?.enabled ? 'default' : 'outline'} className="min-h-11" disabled={backgroundOnly} onClick={() => commitSnapshot(setCastEnabled(makeSnapshot(), true), tr('複数人モードに切替', 'Switched to multiple people'))}>{tr('複数人（まず2人）', 'Multiple (starts with two)')}</Button></div></fieldset>
+            <FormRow label={tr('3. 絵柄', '3. Style')} hint={tr('選ぶと従来の絵柄に切り替えます。画風ライブラリは通常入力から選べます。', 'Selecting here switches to classic style. The style library is available in the full editor.')}><SingleSelect language={language} label={tr('かんたん開始の絵柄', 'Quick-start style')} value={draft.style} options={styles} onChange={(value) => commitSnapshot({ draft: { ...draft, style: value, stylePack: undefined }, locks }, tr('開始絵柄を変更', 'Changed starting style'))} /></FormRow>
+          </div>
+          <DialogFooter><Button variant="outline" className="min-h-11" onClick={() => { setQuickStartOpen(false); setEditorMode('form'); setPreferences((current) => ({ ...current, simpleMode: false })); }}>{tr('詳細を入力する', 'Edit details')}</Button><Button className="min-h-11" onClick={() => { setQuickStartOpen(false); window.setTimeout(showPreview, 50); }}>{tr('この内容で指示書を確認', 'Review this brief')}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(pendingCopy)} onOpenChange={(open) => { if (!open) setPendingCopy(null); }}>
+        <DialogContent className="flex max-h-[90dvh] flex-col overflow-hidden sm:max-w-2xl">
+          <DialogHeader><DialogTitle>{tr('コピーする内容を確認', 'Review before copying')}</DialogTitle><DialogDescription>{pendingCopy?.label}</DialogDescription></DialogHeader>
+          <div className="min-h-0 space-y-3 overflow-y-auto overscroll-contain">
+            <p className="rounded-xl bg-muted p-3 text-sm font-semibold">{pendingCopy?.scope}</p>
+            {copyChecks.length > 0 && <div className="rounded-xl border border-amber-500/30 p-3 text-sm"><p className="font-bold">{tr('確認事項（コピーは続行できます）', 'Review notes (copying is still allowed)')}</p><ul className="mt-2 space-y-2">{copyChecks.map((check) => <li key={check.id}>{check[language]}</li>)}</ul></div>}
+            <p className="text-sm">{tr('言語：', 'Language: ')}{pendingCopy && /[\u3040-\u30ff\u3400-\u9fff]/u.test(pendingCopy.text) ? /[a-z]{3}/i.test(pendingCopy.text) ? tr('日本語を含む（下の原文を確認）', 'Includes Japanese (review text below)') : '日本語' : 'English'} · {pendingCopy?.text.length.toLocaleString()} {tr('文字', 'characters')}</p>
+            <Textarea readOnly value={pendingCopy?.text ?? ''} aria-label={tr('コピーする原文', 'Exact text to copy')} className="min-h-64 text-sm" />
+          </div>
+          <DialogFooter><Button variant="outline" className="min-h-11" onClick={() => setPendingCopy(null)}>{tr('戻る', 'Back')}</Button><Button className="min-h-11" onClick={() => { if (pendingCopy) void performCopyText(pendingCopy.text, pendingCopy.label); setPendingCopy(null); }}>{tr('この内容をコピー', 'Copy this text')}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={managerOpen} onOpenChange={setManagerOpen}>
         <DialogContent showCloseButton={false} className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
@@ -2101,6 +2238,8 @@ export function CharacterStudio() {
                   <Input aria-label={tr('プリセット名', 'Preset name')} value={presetName} onChange={(event) => setPresetName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') savePreset(); }} placeholder={tr('例：いつものWebtoon', 'e.g. My usual Webtoon style')} className="h-11 rounded-xl bg-card" maxLength={50} />
                   <Button onClick={savePreset} className="min-h-11 w-full shrink-0 gap-2 rounded-xl sm:w-auto"><Save className="size-4" />{tr('保存', 'Save')}</Button>
                 </div>
+                <label className="mt-3 grid gap-2 text-sm font-semibold">{tr('保存範囲', 'Save scope')}<Select value={presetScope} onValueChange={(value) => setPresetScope(value as typeof presetScope)}><SelectTrigger className="min-h-11 w-full"><SelectValue>{presetScope === 'all' ? tr('全体（全員＋共通設定）', 'Whole brief') : presetScope === 'person' ? tr('現在の人物テンプレート', 'Current-person template') : tr('現在の衣装テンプレート', 'Current-outfit template')}</SelectValue></SelectTrigger><SelectContent><SelectItem value="all">{tr('全体（全員＋共通設定）', 'Whole brief')}</SelectItem><SelectItem value="person">{tr('現在の人物テンプレート', 'Current-person template')}</SelectItem><SelectItem value="outfit">{tr('現在の衣装テンプレート', 'Current-outfit template')}</SelectItem></SelectContent></Select></label>
+                <label className="mt-3 grid gap-2 text-sm font-semibold">{tr('変更メモ（任意）', 'Version note (optional)')}<Input value={presetNote} maxLength={240} onChange={(event) => setPresetNote(event.target.value)} placeholder={tr('例：第2版・衣装を冬服へ', 'e.g. v2 — winter outfit')} className="min-h-11" /></label>
               </div>
 
               <div className="mt-5">
@@ -2134,12 +2273,13 @@ export function CharacterStudio() {
                     {sortedPresets.map((preset) => (
                       <div key={preset.id} className="flex flex-col items-stretch gap-3 rounded-2xl border border-border bg-card p-3 sm:flex-row sm:items-center">
                         <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">{preset.pinned ? <Pin className="size-4" /> : <Bookmark className="size-4" />}</span>
-                        <div className="min-w-0 flex-1"><p className="truncate text-sm font-bold">{preset.name}</p><p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{snapshotSummary(preset.snapshot, language)}</p><p className="mt-1 text-xs text-muted-foreground">{formatDate(preset.lastUsedAt ?? preset.updatedAt)} · {tr(`${preset.useCount ?? 0}回使用`, `used ${preset.useCount ?? 0} times`)}</p></div>
+                        <div className="min-w-0 flex-1"><p className="truncate text-sm font-bold">{preset.name}</p><Badge variant="outline">{preset.scope === 'outfit' ? tr('衣装', 'Outfit') : preset.scope === 'person' ? tr('人物', 'Person') : tr('全体', 'Whole brief')}</Badge><p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{snapshotSummary(preset.snapshot, language)}</p>{preset.note && <p className="mt-1 break-words text-sm">{preset.note}</p>}<p className="mt-1 text-xs text-muted-foreground">{formatDate(preset.lastUsedAt ?? preset.updatedAt)} · {tr(`${preset.useCount ?? 0}回使用`, `used ${preset.useCount ?? 0} times`)}</p></div>
                         <div className="flex flex-wrap items-center justify-end gap-1">
                           <Button variant="ghost" size="icon" aria-label={tr(preset.pinned ? 'ピン留めを外す' : 'ピン留め', preset.pinned ? 'Unpin preset' : 'Pin preset')} onClick={() => togglePresetPin(preset)}>{preset.pinned ? <PinOff className="size-4" /> : <Pin className="size-4" />}</Button>
                           <Button variant="ghost" size="icon" aria-label={tr('名前変更', 'Rename')} onClick={() => renamePreset(preset)}><Pencil className="size-4" /></Button>
                           <Button variant="ghost" size="icon" aria-label={tr('複製', 'Duplicate')} onClick={() => duplicatePreset(preset)}><CopyPlus className="size-4" /></Button>
                           <Button variant="ghost" size="icon" aria-label={tr('削除', 'Delete')} className="text-destructive" onClick={() => deletePreset(preset)}><Trash2 className="size-4" /></Button>
+                          <Button variant="outline" className="min-h-11" onClick={() => { setTemplateSource({ snapshot: preset.snapshot, name: preset.name, outfit: true }); setManagerOpen(false); }}>{tr('衣装だけ反映', 'Apply outfit only')}</Button>
                           <Button size="sm" className="ml-1 min-h-11 gap-1.5 rounded-xl" onClick={() => loadPreset(preset)}><FolderOpen className="size-4" />{tr('読込', 'Load')}</Button>
                         </div>
                       </div>
@@ -2178,7 +2318,7 @@ export function CharacterStudio() {
                       <Button variant="ghost" size="icon" aria-label={tr('履歴に名前を付ける', 'Name history item')} onClick={() => renameHistory(item)}><Pencil className="size-4" /></Button>
                       <button type="button" onClick={() => loadSnapshot(item.snapshot, tr(`履歴「${item.label}」を復元`, `Restored history “${item.label}”`))} className="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-xl p-2 text-left transition hover:bg-accent/35">
                         <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-muted text-muted-foreground"><History className="size-4" /></span>
-                        <span className="min-w-0 flex-1"><span className="block truncate text-sm font-bold">{item.name ?? item.label}</span><span className="mt-1 block line-clamp-1 text-sm text-muted-foreground">{snapshotSummary(item.snapshot, language)}</span><span className="mt-1 block text-xs text-muted-foreground">{formatDate(item.createdAt)}</span></span>
+                        <span className="min-w-0 flex-1"><span className="block truncate text-sm font-bold">{item.name ?? item.label}</span><span className="mt-1 block line-clamp-1 text-sm text-muted-foreground">{snapshotSummary(item.snapshot, language)}</span>{item.note && <span className="mt-1 block break-words text-sm">{item.note}</span>}<span className="mt-1 block text-xs text-muted-foreground">{formatDate(item.createdAt)}</span></span>
                         <ChevronRight className="size-4 text-muted-foreground" />
                       </button>
                     </div>
@@ -2193,9 +2333,18 @@ export function CharacterStudio() {
       <AlertDialog open={guidedResetOpen} onOpenChange={setGuidedResetOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{tr('現在の設定をリセットして、順番に作りますか？', 'Reset the current brief and build it step by step?')}</AlertDialogTitle>
-            <AlertDialogDescription>{tr('入力中の設定、自由入力、ロック、ギャップ、選択中のテーマを空にします。保存済みプリセットと履歴、お気に入りは削除されません。開始前の内容は履歴へ退避し、直後なら「元に戻す」でも復元できます。', 'This clears current settings, custom text, locks, the active contrast, and the selected theme. Saved presets, history, and favorites are kept. The current brief is backed up to history and can also be restored immediately with Undo.')}</AlertDialogDescription>
+            <AlertDialogTitle>{tr('リセットする範囲を選択', 'Choose what to reset')}</AlertDialogTitle>
+            <AlertDialogDescription>{tr('設定メモ、保存済みプリセット、履歴、お気に入りは保持します。開始前の設定は履歴へ退避し、「元に戻す」でも復元できます。', 'Notes, presets, history, and favorites are kept. Current settings are saved in history; Undo is also available.')}</AlertDialogDescription>
           </AlertDialogHeader>
+          <Select value={resetScope} onValueChange={(value) => value && setResetScope(value as typeof resetScope)}>
+            <SelectTrigger aria-label={tr('リセット範囲', 'Reset scope')} className="min-h-11 w-full"><SelectValue>{resetScope === 'all' ? tr('すべて：空欄から順番に作る', 'Everything: build from scratch') : resetScope === 'person' ? activePersonLabel : tr('全員の人物項目', 'All person fields')}</SelectValue></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="person">{tr('現在の人物のみ', 'Current person only')}</SelectItem>
+              {draft.cast && <SelectItem value="people">{tr('全員の人物項目', 'All person fields')}</SelectItem>}
+              <SelectItem value="all">{tr('すべて：空欄から順番に作る', 'Everything: build from scratch')}</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-sm">{resetScope === 'all' ? tr('人数・識別名・配置・画風・背景を含む全設定とロックを空にし、1人モードで開始します。', 'Clears all settings and locks, including people, labels, placement, style, and scene. Starts in one-person mode.') : tr('対象人物の外見・衣装・表情・自由入力・ロックを空にします。人数、識別名、配置、画風、背景、他の人物は変更しません。', 'Clears appearance, outfit, expression, custom text, and locks for the selected scope. Count, labels, placement, style, scene, and other people are kept.')}</p>
           <AlertDialogFooter>
             <AlertDialogCancel className="min-h-11">{tr('キャンセル', 'Cancel')}</AlertDialogCancel>
             <AlertDialogAction className="min-h-11" onClick={() => startGuidedMode(true)}>{tr('リセットして開始', 'Reset and start')}</AlertDialogAction>
@@ -2233,6 +2382,7 @@ export function CharacterStudio() {
             <DialogDescription>{tr('内容は変えず、一覧に表示する名前だけを変更します。', 'Only the displayed name changes; the saved settings stay the same.')}</DialogDescription>
           </DialogHeader>
           <Input value={renameValue} onChange={(event) => setRenameValue(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') confirmRename(); }} maxLength={50} className="h-11" aria-label={tr('新しいプリセット名', 'New preset name')} />
+          <label className="grid gap-2 text-sm">{tr('変更メモ', 'Version note')}<Input value={renameNote} onChange={(event) => setRenameNote(event.target.value)} maxLength={240} className="min-h-11" /></label>
           <DialogFooter className="mx-0 mb-0 rounded-b-xl">
             <Button variant="outline" className="min-h-11" onClick={() => setRenameTarget(null)}>{tr('キャンセル', 'Cancel')}</Button>
             <Button className="min-h-11" onClick={confirmRename} disabled={!renameValue.trim()}>{tr('名前を変更', 'Rename')}</Button>
@@ -2247,6 +2397,7 @@ export function CharacterStudio() {
             <DialogDescription>{tr('あとで検索しやすい短い名前を付けられます。', 'Add a short name that is easy to find later.')}</DialogDescription>
           </DialogHeader>
           <Input value={historyRenameValue} onChange={(event) => setHistoryRenameValue(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') confirmHistoryRename(); }} maxLength={80} className="h-11" aria-label={tr('履歴の名前', 'History item name')} />
+          <label className="grid gap-2 text-sm">{tr('変更メモ', 'Version note')}<Input value={historyRenameNote} onChange={(event) => setHistoryRenameNote(event.target.value)} maxLength={240} className="min-h-11" /></label>
           <DialogFooter className="mx-0 mb-0 rounded-b-xl">
             <Button variant="outline" className="min-h-11" onClick={() => setHistoryRenameTarget(null)}>{tr('キャンセル', 'Cancel')}</Button>
             <Button className="min-h-11" onClick={confirmHistoryRename} disabled={!historyRenameValue.trim()}>{tr('保存', 'Save')}</Button>
@@ -2294,7 +2445,15 @@ export function CharacterStudio() {
                   },
                   {
                     title: tr('始め方を選ぶ', 'Choose how to start'),
-                    body: tr('「一から順に作る」は全項目を空にして順番に入力。「おまかせ」はまとまった案を一括で作ります。', 'Build step by step clears the brief and guides you in order. Randomize creates a complete concept at once.'),
+                    body: tr('「3項目で始める」は用途・人数・画風だけ選んで確認。「一から順に作る」では現在の人物／全員／すべてのリセット範囲を選べます。設定メモは保持し、フォームは履歴や元に戻すで復元できます。', 'Quick start asks only for purpose, people, and style. Build step by step lets you reset one person, all people, or everything. Notes are retained; restore settings with history or Undo.'),
+                  },
+                  {
+                    title: tr('メモ・表情・ポーズを人物別に管理', 'Separate notes, expressions, and poses'),
+                    body: tr('人物ボタンを切り替えると設定メモと候補も切り替わります。背景・構図は共通メモから反映してください。全員の動作がある場合も表情メモは出力し、個別ポーズは保持して出力から外します。', 'Selecting a person also selects their note draft and candidates. Use the shared note for scene and framing. Group action keeps expression notes in output while retaining, but omitting, individual poses.'),
+                  },
+                  {
+                    title: tr('複製・衣装テンプレートを使う', 'Duplicate and reuse outfits'),
+                    body: tr('人数モードの詳細から人物一覧・一括生成・複製・項目コピーを使えます。保存範囲を「人物」「衣装」にすると専用テンプレートになり、読込前に反映先と変更内容を確認できます。', 'Expand the cast details for comparison, batch randomization, duplication, and field copying. Save a person or outfit template, then review its destination and changes before applying.'),
                   },
                   {
                     title: tr('必要な部分を調整', 'Refine what matters'),
@@ -2310,7 +2469,7 @@ export function CharacterStudio() {
                   },
                   {
                     title: tr('形式を選んでコピー', 'Choose a format and copy'),
-                    body: tr('プレビューで日本語・英語・短縮・タグ・サービス別形式を選び、必要な内容をコピーします。', 'In the preview, choose Japanese, English, short, tags, or a tool-specific format, then copy what you need.'),
+                    body: tr('プレビューで形式を選び、コピー前に範囲と言語・原文を確認します。複数人は共通部分と各人物を別々にコピーできます。未変換の原文から該当入力へ移動して直せます。', 'Choose a format and review its scope, language, and exact text before copying. Copy shared and individual blocks separately; untranslated text links back to the relevant input.'),
                   },
                 ].map((item, index) => (
                   <li key={item.title} className="rounded-2xl border border-border bg-card p-4">
@@ -2386,7 +2545,7 @@ export function CharacterStudio() {
             <fieldset className="space-y-2 rounded-xl border border-border p-3">
               <legend className="px-1 font-semibold">{tr('共有に含める自由入力', 'Custom text to include')}</legend>
               {(!shareSource || shareCustomEntries(shareSource).length === 0) && <p className="text-sm text-muted-foreground">{tr('自由入力はありません。', 'No custom text.')}</p>}
-              {(shareSource ? shareCustomEntries(shareSource) : []).map(({ key, label, value }) => <label key={key} className="flex min-h-11 cursor-pointer items-start gap-3 rounded-lg p-2 hover:bg-muted">
+              {(shareSource ? shareCustomEntries(shareSource, language) : []).map(({ key, label, value }) => <label key={key} className="flex min-h-11 cursor-pointer items-start gap-3 rounded-lg p-2 hover:bg-muted">
                 <Checkbox className="mt-1" checked={shareCustomKeys.includes(key)} onCheckedChange={(checked) => setShareCustomKeys((current) => checked ? [...current, key] : current.filter((item) => item !== key))} />
                 <span className="min-w-0 text-sm"><span className="block font-semibold">{({ purpose: tr('用途', 'Purpose'), style: tr('絵柄', 'Style'), character: tr('人物', 'Character'), appearance: tr('顔・髪', 'Appearance'), outfit: tr('衣装', 'Outfit'), action: tr('表情・ポーズ', 'Pose'), scene: tr('背景・光', 'Scene'), negatives: tr('禁止事項', 'Exclusions') } as Record<string, string>)[key] ?? label}</span><span className="block whitespace-pre-wrap break-words text-muted-foreground">{value}</span></span>
               </label>)}
@@ -2419,6 +2578,7 @@ export function CharacterStudio() {
         <DialogContent className="flex max-h-[90dvh] flex-col overflow-hidden sm:max-w-3xl">
           <DialogHeader className="shrink-0 pr-8"><DialogTitle>{tr('JSON読込前の確認', 'Review JSON import')}</DialogTitle><DialogDescription className="break-all">{pendingImport?.name}</DialogDescription></DialogHeader>
           <div className="min-h-0 space-y-4 overflow-y-auto overscroll-contain">
+            <Badge>{pendingImport?.data.workspace ? tr('完全バックアップ：全体を置換', 'Full backup: replaces workspace') : tr('共有・旧形式：フォームを置換', 'Shared / legacy: replaces form')}</Badge>
             <p className="text-sm leading-relaxed">{pendingImport?.data.workspace
               ? tr('完全バックアップです。現在の入力・プリセット・履歴・お気に入り・表示設定・メモ下書きを置き換えます。読み込み前の全データを1世代退避し、あとから戻せます。', 'This is a full backup. It replaces settings, presets, history, favorites, preferences, and note drafts. One complete pre-import session is kept for recovery.')
               : tr('従来形式のJSONです。現在のフォームを置き換え、プリセットを追加します。メモ・履歴・お気に入りは保持します。読み込み前の全データも退避します。', 'This is a legacy/share JSON. It replaces the form and adds presets, keeping your note, history, and favorites. Your full previous session is also kept for recovery.')}</p>

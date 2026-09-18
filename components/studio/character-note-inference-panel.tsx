@@ -31,6 +31,7 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { SingleSelect } from './form-controls';
+import { PERSON_FIELDS } from '@/lib/character-cast';
 
 const fieldLabels: Record<InferenceField, { ja: string; en: string }> = {
   gender: { ja: '性別・表現', en: 'Gender / presentation' },
@@ -117,6 +118,8 @@ export function CharacterNoteInferencePanel({
   onApply,
   workspace,
   onWorkspaceChange,
+  targetLabel,
+  personOnly = true,
 }: {
   language: UiLanguage;
   draft: CharacterDraft;
@@ -124,6 +127,8 @@ export function CharacterNoteInferencePanel({
   engine?: InferenceEngine;
   workspace: NoteWorkspace;
   onWorkspaceChange: Dispatch<SetStateAction<NoteWorkspace>>;
+  targetLabel?: string;
+  personOnly?: boolean;
   onApply: (
     result: InferenceResult,
     decisions: Record<string, InferenceDecision>,
@@ -131,7 +136,8 @@ export function CharacterNoteInferencePanel({
   ) => boolean;
 }) {
   const tr = (ja: string, en: string) => language === 'ja' ? ja : en;
-  const { note, level, result, decisions, mergeMode } = workspace;
+  const { note, level, decisions, mergeMode } = workspace;
+  const result = useMemo(() => workspace.result ? { ...workspace.result, values: workspace.result.values.filter((value) => personOnly ? PERSON_FIELDS.includes(value.category) : !PERSON_FIELDS.includes(value.category)) } : null, [workspace.result, personOnly]);
   const updateWorkspaceField = <K extends keyof NoteWorkspace>(key: K, next: SetStateAction<NoteWorkspace[K]>) => {
     onWorkspaceChange((current) => ({ ...current, [key]: typeof next === 'function'
       ? (next as (value: NoteWorkspace[K]) => NoteWorkspace[K])(current[key]) : next }));
@@ -262,6 +268,8 @@ export function CharacterNoteInferencePanel({
       <section className="overflow-hidden rounded-[22px] border border-primary/20 bg-card shadow-[0_12px_34px_rgba(78,42,68,0.06)]">
         <div className="border-b border-border bg-primary/[0.045] p-4 sm:p-5">
           <p className="flex items-center gap-2 text-sm font-bold text-primary"><FileSearch className="size-4" />{tr('設定メモを読み取る', 'Read a character note')}</p>
+          <p className="mt-2 text-base font-bold">{tr('反映先：', 'Apply to: ')}{targetLabel ?? tr('現在の人物', 'Current person')}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{tr(personOnly ? '人物の項目だけを反映します。背景・構図は「全員共通の設定メモ」で設定してください。' : '背景・構図・禁止事項だけを反映します。人物の外見は変更しません。', personOnly ? 'Only person fields are applied. Use the shared note for scene and framing.' : 'Only scene, framing, and exclusions are applied. Appearance stays unchanged.')}</p>
           <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{tr('メモと候補の選択は、このブラウザに下書き保存します。フォームは「反映」を押すまで変わりません。', 'Your note and candidate selections are saved as a draft in this browser. The form changes only when you apply them.')}</p>
         </div>
         <div className="space-y-5 p-4 sm:p-5">
@@ -471,7 +479,7 @@ export function CharacterNoteInferencePanel({
                   </Select>
                 </div>
                 <Button className="min-h-12 gap-2 rounded-xl px-5" disabled={applicableAdoptedCount === 0} onClick={() => onApply(result, decisions, mergeMode)}>
-                  <Check className="size-4" />{tr(`${applicableAdoptedCount}件をフォームへ反映`, `Apply ${applicableAdoptedCount} selected`) }
+                  <Check className="size-4 shrink-0" /><span className="whitespace-normal">{tr(`${targetLabel ?? '現在の人物'}へ${applicableAdoptedCount}件を反映`, `Apply ${applicableAdoptedCount} to ${targetLabel ?? 'current person'}`)}</span>
                 </Button>
               </div>
               <p className="mt-2 flex items-start gap-2 text-xs leading-relaxed text-muted-foreground"><X className="mt-0.5 size-3.5 shrink-0" />{tr('現在ロック中の項目は、どの反映方法でも変更しません。', 'Fields already locked in the form are never changed.')}</p>

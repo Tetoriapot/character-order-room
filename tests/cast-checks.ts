@@ -17,6 +17,8 @@ import { createEmptyNoteWorkspace } from '@/lib/inference/note-workspace';
 const legacy = { draft: hydrateDraft(defaultDraft), locks: { hairColors: true } };
 const original = JSON.stringify(legacy);
 let group = setCastEnabled(legacy, true);
+assert.notEqual(group.draft.cast!.activeId, setCastEnabled(legacy, true).draft.cast!.activeId, 'new casts use unique IDs so note drafts cannot attach to a different person');
+group = { ...group, draft: { ...group.draft, cast: { ...group.draft.cast!, activeId: 'person-1', members: group.draft.cast!.members.map((member, index) => ({ ...member, id: `person-${index + 1}` })) } } };
 assert.equal(group.draft.cast!.members.length, 2);
 assert.equal(JSON.stringify(legacy), original, 'enable does not mutate legacy input');
 group.draft.hairColors = ['black'];
