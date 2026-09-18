@@ -1,5 +1,6 @@
 import { englishFor, labelFor } from '@/data/options';
 import type { CharacterSnapshot, LockKey, UiLanguage } from './character-types';
+import { emptyStylePack, findAntiAiBlock, findStylePreset } from './style-pack';
 
 export type CharacterChange = {
   id: string;
@@ -95,12 +96,34 @@ export function diffSnapshots(before: CharacterSnapshot, after: CharacterSnapsho
       afterJa: afterGap?.labelJa || 'なし', afterEn: afterGap?.labelEn || 'None',
     });
   }
+  const previousStyle = before.draft.stylePack ?? emptyStylePack();
+  const nextStyle = after.draft.stylePack ?? emptyStylePack();
+  if (previousStyle.presetId !== nextStyle.presetId) changes.push({
+    id: 'style-pack', labelJa: '画風プリセット', labelEn: 'Style preset',
+    beforeJa: findStylePreset(previousStyle.presetId)?.nameJa ?? '従来の絵柄',
+    beforeEn: findStylePreset(previousStyle.presetId)?.nameEn ?? 'Classic style',
+    afterJa: findStylePreset(nextStyle.presetId)?.nameJa ?? '従来の絵柄',
+    afterEn: findStylePreset(nextStyle.presetId)?.nameEn ?? 'Classic style',
+  });
+  if (!sameValue(previousStyle.antiAiIds, nextStyle.antiAiIds)) changes.push({
+    id: 'style-helpers', labelJa: '画風の補助', labelEn: 'Style helpers',
+    beforeJa: previousStyle.antiAiIds.map((id) => findAntiAiBlock(id)?.nameJa).join('、') || 'なし',
+    beforeEn: previousStyle.antiAiIds.map((id) => findAntiAiBlock(id)?.nameEn).join(', ') || 'None',
+    afterJa: nextStyle.antiAiIds.map((id) => findAntiAiBlock(id)?.nameJa).join('、') || 'なし',
+    afterEn: nextStyle.antiAiIds.map((id) => findAntiAiBlock(id)?.nameEn).join(', ') || 'None',
+  });
+  if (!sameValue(previousStyle.excludedBlocks, nextStyle.excludedBlocks)) changes.push({
+    id: 'style-blocks', labelJa: 'コピーから除外するブロック', labelEn: 'Blocks excluded from copy',
+    beforeJa: previousStyle.excludedBlocks.join('、') || 'なし', beforeEn: previousStyle.excludedBlocks.join(', ') || 'None',
+    afterJa: nextStyle.excludedBlocks.join('、') || 'なし', afterEn: nextStyle.excludedBlocks.join(', ') || 'None',
+  });
   return changes;
 }
 
 export function snapshotSummary(snapshot: CharacterSnapshot, language: UiLanguage = 'ja') {
   const { draft } = snapshot;
   const parts = [
+    language === 'ja' ? findStylePreset(draft.stylePack?.presetId)?.nameJa : findStylePreset(draft.stylePack?.presetId)?.nameEn,
     formatValue('purpose', draft.purpose, language),
     formatValue('species', draft.species, language),
     formatValue('outfit', draft.outfit, language),

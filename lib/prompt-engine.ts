@@ -6,6 +6,7 @@ import {
   optionsByField,
 } from '@/data/options';
 import { normalizeAgeInput } from './age-utils';
+import { buildAntiAiBlock, defaultStyleAvoid, defaultStyleAvoidJa, findAntiAiBlock, findStylePreset, normalizeStylePack } from './style-pack';
 import {
   backgroundConflictsWithTime,
   lightingConflictsWithTime,
@@ -283,10 +284,18 @@ const sceneCompositionIds = new Set([
 /** Returns user-facing explanations for values that are intentionally omitted or normalized. */
 export function analyzePromptNotices(sourceDraft: CharacterDraft): PromptNotice[] {
   const draft = resolveDraftConflicts(sourceDraft);
+  const activeStyle = findStylePreset(draft.stylePack?.presetId);
   const notices: PromptNotice[] = [];
   const add = (notice: PromptNotice) => {
     if (!notices.some((item) => item.id === notice.id)) notices.push(notice);
   };
+
+  if (activeStyle) add({
+    id: 'style-pack-overrides-classic', kind: 'info', field: 'style',
+    labelJa: '画風ライブラリを優先', labelEn: 'Style library takes priority',
+    reasonJa: '従来の絵柄・仕上げ・絵柄の自由入力は保持したまま、今回の出力には含めません。AVOIDには画風パック標準の禁止事項も追加します。',
+    reasonEn: 'Classic style, traits, and custom style are retained but not output. The pack also adds its default exclusions.',
+  });
 
   for (const field of multiValueFields) {
     const before = Array.isArray(sourceDraft[field]) ? sourceDraft[field] as string[] : [];
@@ -407,6 +416,7 @@ export function analyzePromptNotices(sourceDraft: CharacterDraft): PromptNotice[
 
   const customPositive = Object.entries(draft.custom)
     .filter(([key, value]) => !['negatives', 'gap', 'gapEn'].includes(key)
+      && (!activeStyle || key !== 'style')
       && (!backgroundOnly || ['style', 'scene'].includes(key)) && value.trim())
     .map(([, value]) => value.trim());
   for (const id of draft.negatives) {
@@ -440,6 +450,7 @@ export function analyzePromptNotices(sourceDraft: CharacterDraft): PromptNotice[
   for (const [key, value] of Object.entries(draft.custom)) {
     const trimmed = value.trim();
     if (!trimmed || ['negatives', 'gap', 'gapEn'].includes(key)
+      || (activeStyle && key === 'style')
       || (backgroundOnly && !['style', 'scene'].includes(key))) continue;
     const translated = translateFreeText(trimmed);
     if (/[\u3040-\u30ff\u3400-\u9fff]/.test(translated)) {
@@ -471,10 +482,14 @@ export function generatePrompts(sourceDraft: CharacterDraft): PromptOutputs {
   const backgroundOnly = draft.purpose === 'background';
   const purposeJa = draft.purpose ? labelFor('purpose', draft.purpose) : '';
   const purposeEn = draft.purpose ? englishFor('purpose', draft.purpose) : '';
-  const styleJa = draft.style ? labelFor('style', draft.style) : '';
-  const styleEn = draft.style ? englishFor('style', draft.style) : '';
-  const styleTraitsJa = labelList('styleTraits', draft.styleTraits, 'ja');
-  const styleTraitsEn = labelList('styleTraits', draft.styleTraits, 'en');
+  const stylePack = normalizeStylePack(draft.stylePack);
+  const activeStyle = findStylePreset(stylePack?.presetId);
+  const styleJa = activeStyle?.nameJa ?? (draft.style ? labelFor('style', draft.style) : '');
+  const styleEn = activeStyle?.stylePrompt ?? (draft.style ? englishFor('style', draft.style) : '');
+  const styleTraitsJa = activeStyle ? [] : labelList('styleTraits', draft.styleTraits, 'ja');
+  const styleTraitsEn = activeStyle ? [] : labelList('styleTraits', draft.styleTraits, 'en');
+  const antiAiEn = activeStyle ? buildAntiAiBlock(stylePack?.antiAiIds ?? []) : '';
+  const antiAiJa = activeStyle ? (stylePack?.antiAiIds ?? []).map((id) => findAntiAiBlock(id)?.nameJa).filter(Boolean).join('、') : '';
   const subjectJa = buildJaSubject(draft);
   const subjectEn = buildEnSubject(draft);
   const buildJa = draft.build ? labelFor('build', draft.build) : '';
@@ -544,6 +559,7 @@ export function generatePrompts(sourceDraft: CharacterDraft): PromptOutputs {
   const effectsEn = effectChoices.map((choice) => choice.labelEn);
   const customEntries = Object.entries(draft.custom)
     .filter(([key, value]) => !['negatives', 'gap', 'gapEn'].includes(key)
+      && (!activeStyle || key !== 'style')
       && (!backgroundOnly || ['style', 'scene'].includes(key))
       && value.trim())
     .map(([key, value]) => [key, value.trim()] as const);
@@ -552,10 +568,12 @@ export function generatePrompts(sourceDraft: CharacterDraft): PromptOutputs {
   const gapLabelJa = backgroundOnly ? '' : draft.generatedGap?.labelJa.trim() || legacyGapJa;
   const gapLabelEn = backgroundOnly ? '' : draft.generatedGap?.labelEn.trim() || legacyGapEn || (gapLabelJa ? translateFreeText(gapLabelJa) : '');
   const customPositive = compact([
+    antiAiJa ? `画風の補助：${antiAiJa}` : '',
     gapLabelJa ? `ギャップ要素：${gapLabelJa}` : '',
     ...customEntries.map(([, value]) => value),
   ]);
   const customPositiveEn = compact([
+    antiAiEn,
     gapLabelEn ? `Visual contrast: ${gapLabelEn}` : '',
     ...customEntries.map(([, value]) => translateFreeText(value)),
   ]);
@@ -623,10 +641,12 @@ export function generatePrompts(sourceDraft: CharacterDraft): PromptOutputs {
   const customNegativeItems = splitCustomNegatives(draft.custom.negatives ?? '')
     .filter((value) => !conflictsWithPositive(value, draft, customPositive));
   const negativeItemsJa = uniqueSemantic([
+    ...(activeStyle ? defaultStyleAvoidJa : []),
     ...fixedNegativeChoices.map((choice) => choice.labelJa),
     ...customNegativeItems,
   ]);
   const negativeInstructionsEn = uniqueSemantic([
+    ...(activeStyle ? defaultStyleAvoid : []),
     ...fixedNegativeChoices.map((choice) => negativeInstructionEn(choice.labelEn)),
     ...customNegativeItems.map((value) => negativeInstructionEn(translateFreeText(value))),
   ]);

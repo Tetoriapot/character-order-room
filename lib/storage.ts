@@ -1,5 +1,6 @@
 import { defaultDraft } from '@/data/presets';
 import { normalizeAgeInput } from './age-utils';
+import { normalizeStylePack } from './style-pack';
 import { isGuidedSectionId } from './guided-builder';
 import type {
   CharacterDraft,
@@ -118,6 +119,8 @@ export function hydrateDraft(value: unknown): CharacterDraft {
         .filter(([, item]) => typeof item === 'string'),
     ) as Record<string, string>;
   }
+  const stylePack = normalizeStylePack(source.stylePack);
+  if (stylePack) hydrated.stylePack = stylePack;
   const generatedGap = hydrateGeneratedGap(source.generatedGap);
   const legacyGapJa = hydrated.custom.gap?.trim().replace(/^ギャップ要素[：:]\s*/, '') ?? '';
   const legacyGapEn = hydrated.custom.gapEn?.trim().replace(/^Visual contrast:\s*/i, '') ?? '';

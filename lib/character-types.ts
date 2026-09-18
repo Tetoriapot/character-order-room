@@ -1,3 +1,5 @@
+import type { StylePackSelection } from './style-pack-types';
+
 export type OutputMode = 'ja' | 'en' | 'both' | 'short' | 'tags';
 export type UiLanguage = 'ja' | 'en';
 export type ExportProfile = 'generic' | 'stable-diffusion' | 'midjourney' | 'novelai' | 'human-brief';
@@ -71,6 +73,7 @@ export type GeneratedGapState = {
 export type CharacterDraft = CharacterFields & {
   custom: Record<string, string>;
   generatedGap?: GeneratedGapState;
+  stylePack?: StylePackSelection;
 };
 
 export type CharacterSnapshot = {

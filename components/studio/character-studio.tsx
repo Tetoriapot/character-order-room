@@ -103,7 +103,10 @@ import {
   themeById,
   themes,
 } from '@/lib/random-engine';
-import { analyzePromptNotices, formatProfileOutput, generatePrompts } from '@/lib/prompt-engine';
+import { analyzePromptNotices, formatProfileOutput } from '@/lib/prompt-engine';
+import { buildPromptBlocks, generateStudioPrompts as generatePrompts } from '@/lib/prompt-blocks';
+import { findStylePreset } from '@/lib/style-pack';
+import type { StylePackSelection } from '@/lib/style-pack-types';
 import { applyPurposeRecommendation } from '@/lib/purpose-engine';
 import {
   appendHistory,
@@ -195,6 +198,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Toaster, toast } from '@/components/ui/toast';
 import { CharacterNoteInferencePanel } from './character-note-inference-panel';
 import { ChangeList } from './change-list';
+import { StylePackPanel } from './style-pack-panel';
+import { PromptBlockPreview } from './prompt-block-preview';
 import { ChoiceChips, FieldActions, FormRow, SingleSelect } from './form-controls';
 
 const sectionMeta: Array<{
@@ -242,7 +247,9 @@ const inferenceSectionByField: Partial<Record<LockKey, GuidedSectionId>> = {
   negatives: 'negative',
 };
 
-const outputTabs: Array<{ value: OutputMode; labelJa: string; labelEn: string; hintJa: string; hintEn: string }> = [
+type StudioOutputMode = OutputMode | 'blocks';
+const outputTabs: Array<{ value: StudioOutputMode; labelJa: string; labelEn: string; hintJa: string; hintEn: string }> = [
+  { value: 'blocks', labelJa: 'ブロック', labelEn: 'Blocks', hintJa: '内容（日本語）・画風・補助・禁止事項を分離', hintEn: 'Japanese content, English style, helpers, and exclusions' },
   { value: 'ja', labelJa: '日本語', labelEn: 'Japanese', hintJa: '人への依頼・内容確認向け', hintEn: 'For review or a Japanese-language commission' },
   { value: 'en', labelJa: 'English', labelEn: 'English', hintJa: '英語対応の画像生成AI向け', hintEn: 'For image tools that accept natural English' },
   { value: 'both', labelJa: '日英', labelEn: 'JP + EN', hintJa: '共有・保存用の完全版', hintEn: 'Complete bilingual version for sharing' },
@@ -251,6 +258,23 @@ const outputTabs: Array<{ value: OutputMode; labelJa: string; labelEn: string; h
 ];
 
 const releaseNotes = [
+  {
+    date: '2026-09-18',
+    titleJa: '画風80種・補助30種とブロック出力',
+    titleEn: '80 styles, 30 helpers, and block output',
+    itemsJa: [
+      '絵柄ステップに8カテゴリ・80種の画風を追加。名前・用途・タグ検索、お気に入り、カテゴリ別ランダムに対応しました。',
+      '補助30種から最大5件を選択でき、相性のよい3件の提案・目的・注意点を確認できます。補助は自動適用しません。',
+      'CONTENT / STYLE / ANTI_AI / AVOIDの表示切替、改行あり・1行・JSONのコピーを追加しました。',
+      '選択は自動保存・テンプレ・履歴・バックアップ・共有・変更比較に対応。従来の絵柄入力も保持します。',
+    ],
+    itemsEn: [
+      'Browse 80 styles in 8 categories with search, favorites, and category-weighted random selection.',
+      'Choose up to 5 of 30 optional helpers, with three recommendations, intent, and cautions. Nothing is applied automatically.',
+      'Toggle CONTENT / STYLE / ANTI_AI / AVOID and copy formatted, one-line, or JSON prompts.',
+      'Selections work with autosave, templates, history, backup, sharing, and comparisons. Classic inputs are preserved.',
+    ],
+  },
   {
     date: '2026-09-18',
     titleJa: '入力の保護・共有前の確認・全変更の比較',
@@ -444,7 +468,7 @@ export function CharacterStudio() {
   const locks = timeline.present.snapshot.locks;
   const [openSections, setOpenSections] = useState<string[]>(['purpose', 'style', 'character']);
   const [editorMode, setEditorMode] = useState<'form' | 'note'>('form');
-  const [outputMode, setOutputMode] = useState<OutputMode>('ja');
+  const [outputMode, setOutputMode] = useState<StudioOutputMode>('ja');
   const [themeId, setThemeId] = useState('');
   const [lastAction, setLastAction] = useState('デフォルトのキャラクターを表示中');
   const [lastChanges, setLastChanges] = useState<CharacterChange[]>([]);
@@ -496,6 +520,11 @@ export function CharacterStudio() {
   const shareUrl = sharedSnapshot && typeof window !== 'undefined' ? createShareUrl(window.location.href, sharedSnapshot) : '';
 
   const outputs = useMemo(() => generatePrompts(draft), [draft]);
+  const promptBlocks = useMemo(() => buildPromptBlocks(draft, outputs), [draft, outputs]);
+  const activeStylePreset = findStylePreset(draft.stylePack?.presetId);
+  useEffect(() => {
+    setOutputMode(activeStylePreset ? 'blocks' : 'ja');
+  }, [activeStylePreset]);
   const notices = useMemo(() => analyzePromptNotices(draft), [draft]);
   const profileOutput = useMemo(
     () => formatProfileOutput(outputs, draft, preferences.exportProfile),
@@ -510,7 +539,7 @@ export function CharacterStudio() {
     : draft.custom.gap?.replace(/^ギャップ要素[：:]\s*/, '').trim() || '';
   const legacyGapActive = draft.generatedGap?.seedId === 'legacy';
   const hasUserCustomInput = Object.entries(draft.custom)
-    .some(([key, value]) => !['gap', 'gapEn'].includes(key) && value.trim());
+    .some(([key, value]) => !['gap', 'gapEn'].includes(key) && (!activeStylePreset || key !== 'style') && value.trim());
   const backgroundOnly = draft.purpose === 'background';
   const visibleSections = useMemo(() => sectionMeta.filter((section) => {
     if (backgroundOnly && ['character', 'appearance', 'outfit', 'action'].includes(section.id)) return false;
@@ -862,7 +891,7 @@ export function CharacterStudio() {
     }
 
     const mergeFields = Object.keys(draft)
-      .filter((field) => field !== 'custom' && field !== 'generatedGap') as LockKey[];
+      .filter((field) => field !== 'custom' && field !== 'generatedGap' && field !== 'stylePack') as LockKey[];
     const changedValueFields = new Set(mergeFields.filter((field) =>
       JSON.stringify(draft[field]) !== JSON.stringify(dryRun.snapshot.draft[field]),
     ));
@@ -1084,7 +1113,11 @@ export function CharacterStudio() {
     }
   };
 
-  const copyOutput = (mode: OutputMode = outputMode) => {
+  const updateStylePack = (selection: StylePackSelection) => {
+    commitSnapshot({ draft: { ...draft, stylePack: selection }, locks }, tr('画風・補助・ブロックを変更', 'Changed style, helpers, or blocks'), { historySource: 'manual' });
+  };
+
+  const copyOutput = (mode: StudioOutputMode = outputMode) => {
     const tab = outputTabs.find((item) => item.value === mode);
     return copyText(outputs[mode], tr(`${tab?.labelJa ?? mode}をコピー`, `Copied ${tab?.labelEn ?? mode}`));
   };
@@ -1751,7 +1784,22 @@ export function CharacterStudio() {
                   <div className="mt-4">{customField(tr('用途の補足・自由設定', 'Purpose notes'), 'purpose', tr('用途の補足・自由設定', 'Add purpose-specific notes'))}</div>
                 </StudioSection>
 
-                <StudioSection hidden={!displayedSectionIds.includes('style')} value="style" icon={<Palette />} eyebrow="STEP 2" title={tr('絵柄と仕上げ', 'Style and finish')} summary={tr(`${labelFor('style', draft.style)}・${draft.styleTraits.length}個の追加要素`, `${englishFor('style', draft.style)} · ${draft.styleTraits.length} details`)}>
+                <StudioSection hidden={!displayedSectionIds.includes('style')} value="style" icon={<Palette />} eyebrow="STEP 2" title={tr('絵柄と仕上げ', 'Style and finish')} summary={activeStylePreset ? tr(`${activeStylePreset.nameJa}・補助${draft.stylePack?.antiAiIds.length ?? 0}件`, `${activeStylePreset.nameEn} · ${draft.stylePack?.antiAiIds.length ?? 0} helpers`) : tr(`${labelFor('style', draft.style)}・${draft.styleTraits.length}個の追加要素`, `${englishFor('style', draft.style)} · ${draft.styleTraits.length} details`)}>
+                  <StylePackPanel
+                    selection={draft.stylePack}
+                    language={language}
+                    favorites={preferences.favoriteChoices.stylePack ?? []}
+                    locked={Boolean(locks.style)}
+                    onChange={updateStylePack}
+                    onToggleFavorite={(id) => setPreferences((current) => {
+                      const favorites = current.favoriteChoices.stylePack ?? [];
+                      return { ...current, favoriteChoices: { ...current.favoriteChoices, stylePack: favorites.includes(id) ? favorites.filter((item) => item !== id) : [...favorites, id] } };
+                    })}
+                    onSaveTemplate={() => { setPresetName(tr(activeStylePreset?.nameJa ?? '画風', activeStylePreset?.nameEn ?? 'Style') + tr('テンプレート', ' template')); setManagerTab('presets'); setManagerOpen(true); }}
+                    onPreview={() => { setOutputMode('blocks'); showPreview(); }}
+                  />
+                  {activeStylePreset ? <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border p-3"><span className="text-sm text-muted-foreground">{tr('画風のランダム変更をロック', 'Lock random style changes')}</span><Button variant="outline" className="min-h-11 rounded-xl" aria-pressed={Boolean(locks.style)} onClick={() => toggleLock('style')}><Lock className="size-4" />{locks.style ? tr('ロック中', 'Locked') : tr('未ロック', 'Unlocked')}</Button></div> : <div className="mt-5 border-t border-border pt-4">
+                  <h3 className="mb-3 text-sm font-semibold">{tr('従来の絵柄設定', 'Classic style settings')}</h3>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <FormRow label={tr('絵柄プリセット', 'Style preset')} actions={fieldActions('style', tr('絵柄', 'Style'))}>
                       <SingleSelect language={language} label={tr('絵柄プリセット', 'Style preset')} value={draft.style} options={styles} onChange={(value) => updateField('style', value)} />
@@ -1761,6 +1809,7 @@ export function CharacterStudio() {
                     </FormRow>
                   </div>
                   <div className="mt-3">{customField(tr('絵柄の自由設定', 'Custom style direction'), 'style', tr('例：墨絵のようなにじみ、色トレ少なめ', 'e.g. soft ink bleed, restrained color grading'))}</div>
+                  </div>}
                 </StudioSection>
 
                 <StudioSection hidden={!displayedSectionIds.includes('character')} value="character" icon={<UserRound />} eyebrow="STEP 3" title={tr('キャラクターの基本', 'Character basics')} summary={tr(`${labelFor('ageGroup', draft.ageGroup)}・${labelFor('gender', draft.gender)}・${labelFor('build', draft.build)}`, `${englishFor('ageGroup', draft.ageGroup)} · ${englishFor('gender', draft.gender)} · ${englishFor('build', draft.build)}`)}>
@@ -1872,16 +1921,16 @@ export function CharacterStudio() {
               </div>
 
               <div className="mt-4 overflow-hidden rounded-[22px] border border-border bg-card shadow-[0_14px_38px_rgba(78,42,68,0.08)]">
-                <Tabs value={outputMode} onValueChange={(value) => setOutputMode(value as OutputMode)} className="gap-0">
-                  <div className="overflow-x-auto border-b border-border px-2 pt-2">
-                    <TabsList variant="line" className="min-w-max">
-                      {outputTabs.map((tab) => <TabsTrigger key={tab.value} value={tab.value} className="min-h-11 px-3 text-sm">{language === 'ja' ? tab.labelJa : tab.labelEn}</TabsTrigger>)}
+                <Tabs value={outputMode} onValueChange={(value) => setOutputMode(value as StudioOutputMode)} className="gap-0">
+                  <div className="border-b border-border px-2 pt-2 pb-1">
+                    <TabsList variant="line" className="grid w-full grid-cols-3 gap-1 group-data-horizontal/tabs:h-auto">
+                      {outputTabs.map((tab) => <TabsTrigger key={tab.value} value={tab.value} className="h-11 min-w-0 px-2 text-sm group-data-horizontal/tabs:after:bottom-0">{language === 'ja' ? tab.labelJa : tab.labelEn}</TabsTrigger>)}
                     </TabsList>
                   </div>
                   {outputTabs.map((tab) => (
                     <TabsContent key={tab.value} value={tab.value} className="min-h-[330px] p-5">
                       <p className="mb-4 rounded-xl bg-muted/55 p-3 text-sm text-muted-foreground">{language === 'ja' ? tab.hintJa : tab.hintEn}</p>
-                      {!outputs[tab.value] ? (
+                      {tab.value === 'blocks' ? (activeStylePreset && draft.stylePack ? <PromptBlockPreview blocks={promptBlocks} selection={draft.stylePack} language={language} onChange={updateStylePack} onCopy={(text, label) => { void copyText(text, label); }} /> : <p className="rounded-xl border border-dashed border-border p-5 text-sm text-muted-foreground">{tr('STEP 2「絵柄と仕上げ」の画風ライブラリから1つ選ぶと、ブロック形式を使えます。従来の絵柄設定は日本語・Englishなどのタブで確認できます。', 'Select a style from the STEP 2 library to use block output. Classic styles remain available in Japanese, English, and the other tabs.')}</p>) : !outputs[tab.value] ? (
                         <div className="grid min-h-48 place-items-center rounded-2xl border border-dashed border-border bg-muted/20 p-6 text-center">
                           <div><FileText className="mx-auto size-7 text-muted-foreground/45" /><p className="mt-3 text-sm font-bold">{tr('まだ要素が選ばれていません', 'No details selected yet')}</p><p className="mt-1 text-sm text-muted-foreground">{tr('入力した内容だけが、ここに順番に表示されます。', 'Only the details you choose will appear here.')}</p></div>
                         </div>
@@ -2224,6 +2273,10 @@ export function CharacterStudio() {
                   {
                     title: tr('保存・復元する', 'Save and restore'),
                     body: tr('入力・メモ下書き・候補の採用状態は、このブラウザへ自動保存されます。「完全バックアップ」は履歴やお気に入りも含むJSONです。読込前に置き換える内容を確認でき、読込前の状態へ1世代戻せます。', 'Settings, note drafts, and candidate decisions are autosaved in this browser. Full backup JSON includes history and favorites. Review imports before replacing anything, and restore one pre-import session if needed.'),
+                  },
+                  {
+                    title: tr('画風と内容を分けて作る', 'Separate style and content'),
+                    body: tr('STEP 2の画風ライブラリで80種から1つ選び、補助30種を任意で追加します（1〜3件推奨、最大5件）。ブロックタブでコピー対象を切り替え、整形・1行・JSONでコピーできます。テンプレ保存は人物設定も一緒に保存します。解除すれば保持していた従来の絵柄に戻ります。', 'Choose one of 80 styles in STEP 2 and optionally add helpers (1–3 recommended, maximum 5). The Blocks tab offers inclusion toggles and formatted, one-line, or JSON copy. Templates save the character settings too. Clearing the style restores classic inputs.'),
                   },
                   {
                     title: tr('形式を選んでコピー', 'Choose a format and copy'),

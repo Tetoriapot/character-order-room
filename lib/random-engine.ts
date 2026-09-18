@@ -433,6 +433,7 @@ const cloneDraft = (draft: CharacterDraft): CharacterDraft => ({
   lighting: [...draft.lighting],
   negatives: [...draft.negatives],
   custom: { ...draft.custom },
+  ...(draft.stylePack ? { stylePack: { ...draft.stylePack, antiAiIds: [...draft.stylePack.antiAiIds], excludedBlocks: [...draft.stylePack.excludedBlocks] } } : {}),
   ...(draft.generatedGap ? {
     generatedGap: {
       ...draft.generatedGap,
