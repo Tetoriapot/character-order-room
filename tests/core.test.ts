@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import './safety-checks';
 import {
   accessories,
   backgrounds,

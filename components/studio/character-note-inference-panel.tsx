@@ -1,7 +1,8 @@
 'use client';
 
 import { Check, FileSearch, Lightbulb, Lock, RotateCcw, ShieldCheck, Sparkles, X } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import type { NoteWorkspace } from '@/lib/inference/note-workspace';
 import { optionsByField } from '@/data/options';
 import { confidenceLabel } from '@/lib/inference/score-confidence';
 import { ruleBasedInferenceEngine } from '@/lib/inference/infer-from-note';
@@ -114,11 +115,15 @@ export function CharacterNoteInferencePanel({
   locks,
   engine = ruleBasedInferenceEngine,
   onApply,
+  workspace,
+  onWorkspaceChange,
 }: {
   language: UiLanguage;
   draft: CharacterDraft;
   locks: Partial<Record<LockKey, boolean>>;
   engine?: InferenceEngine;
+  workspace: NoteWorkspace;
+  onWorkspaceChange: Dispatch<SetStateAction<NoteWorkspace>>;
   onApply: (
     result: InferenceResult,
     decisions: Record<string, InferenceDecision>,
@@ -126,15 +131,24 @@ export function CharacterNoteInferencePanel({
   ) => boolean;
 }) {
   const tr = (ja: string, en: string) => language === 'ja' ? ja : en;
-  const [note, setNote] = useState('');
-  const [level, setLevel] = useState<InferenceLevel>('standard');
-  const [result, setResult] = useState<InferenceResult | null>(null);
-  const [decisions, setDecisions] = useState<Record<string, InferenceDecision>>({});
-  const [mergeMode, setMergeMode] = useState<InferenceMergeMode>('overwrite');
+  const { note, level, result, decisions, mergeMode } = workspace;
+  const updateWorkspaceField = <K extends keyof NoteWorkspace>(key: K, next: SetStateAction<NoteWorkspace[K]>) => {
+    onWorkspaceChange((current) => ({ ...current, [key]: typeof next === 'function'
+      ? (next as (value: NoteWorkspace[K]) => NoteWorkspace[K])(current[key]) : next }));
+  };
+  const setNote = (value: string) => updateWorkspaceField('note', value);
+  const setLevel = (value: InferenceLevel) => updateWorkspaceField('level', value);
+  const setResult = (value: InferenceResult | null) => updateWorkspaceField('result', value);
+  const setDecisions = (value: SetStateAction<Record<string, InferenceDecision>>) => updateWorkspaceField('decisions', value);
+  const setMergeMode = (value: InferenceMergeMode) => updateWorkspaceField('mergeMode', value);
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState('');
   const resultHeadingRef = useRef<HTMLHeadingElement>(null);
   const analysisRequestRef = useRef(0);
+  useEffect(() => {
+    setAnalyzing(false);
+    return () => { analysisRequestRef.current += 1; };
+  }, [note, level]);
 
   const adoptedCount = result?.values.reduce((count, value) =>
     count + Number(Boolean(decisions[candidateKey(value)]?.adopted)), 0) ?? 0;
@@ -248,7 +262,7 @@ export function CharacterNoteInferencePanel({
       <section className="overflow-hidden rounded-[22px] border border-primary/20 bg-card shadow-[0_12px_34px_rgba(78,42,68,0.06)]">
         <div className="border-b border-border bg-primary/[0.045] p-4 sm:p-5">
           <p className="flex items-center gap-2 text-sm font-bold text-primary"><FileSearch className="size-4" />{tr('設定メモを読み取る', 'Read a character note')}</p>
-          <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{tr('自由文から候補を作ります。フォームは「反映」を押すまで変わりません。', 'Create candidates from free text. The form will not change until you apply them.')}</p>
+          <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{tr('メモと候補の選択は、このブラウザに下書き保存します。フォームは「反映」を押すまで変わりません。', 'Your note and candidate selections are saved as a draft in this browser. The form changes only when you apply them.')}</p>
         </div>
         <div className="space-y-5 p-4 sm:p-5">
           <div>

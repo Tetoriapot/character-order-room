@@ -107,18 +107,19 @@ import { analyzePromptNotices, formatProfileOutput, generatePrompts } from '@/li
 import { applyPurposeRecommendation } from '@/lib/purpose-engine';
 import {
   appendHistory,
-  decodeShareSnapshot,
   DEFAULT_STUDIO_PREFERENCES,
-  encodeShareSnapshot,
   exportStudioData,
   migrateSnapshot,
   parseHistory,
   parsePresets,
   parseSnapshot,
   parseStudioPreferences,
-  parseStudioImport,
   STORAGE_KEYS,
 } from '@/lib/storage';
+import { createEmptyNoteWorkspace } from '@/lib/inference/note-workspace';
+import { useStudioAutosave } from '@/hooks/use-studio-autosave';
+import { exportStudioBackup, parseStudioBackup, parseAnyStudioImport, WORKSPACE_KEY, RECOVERY_KEY, MAX_BACKUP_BYTES, type StudioWorkspace, type StudioImport } from '@/lib/studio-backup';
+import { createShareUrl, prepareShareSnapshot, readShareUrl, MAX_SHARE_URL_LENGTH } from '@/lib/share-snapshot';
 import {
   commitEditorTimeline,
   createEditorTimeline,
@@ -169,6 +170,7 @@ import {
   AccordionTrigger,
 } from '@/components/ui/accordion';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -192,6 +194,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { Toaster, toast } from '@/components/ui/toast';
 import { CharacterNoteInferencePanel } from './character-note-inference-panel';
+import { ChangeList } from './change-list';
 import { ChoiceChips, FieldActions, FormRow, SingleSelect } from './form-controls';
 
 const sectionMeta: Array<{
@@ -248,6 +251,23 @@ const outputTabs: Array<{ value: OutputMode; labelJa: string; labelEn: string; h
 ];
 
 const releaseNotes = [
+  {
+    date: '2026-09-18',
+    titleJa: '入力の保護・共有前の確認・全変更の比較',
+    titleEn: 'Safer drafts, sharing, and complete comparisons',
+    itemsJa: [
+      '設定メモと採用候補を下書き保存し、保存状態と失敗時の対処を表示するようにしました。',
+      '履歴・お気に入り・表示設定を含む完全バックアップと、読込前の確認・復元に対応しました。',
+      '共有する自由入力を選び、内容を確認してからリンクを作成できます。受信側でも読込前に変更点を確認できます。',
+      '4案の全変更・変更前後・比較表と、スマホで編集位置に戻る操作を追加しました。',
+    ],
+    itemsEn: [
+      'Note drafts and candidate decisions are saved locally with a visible save status and recovery guidance.',
+      'Full backups include history, favorites, preferences, and note drafts. Review imports and recover the previous session.',
+      'Review shared content and select custom text before copying a link. Recipients review changes before loading it.',
+      'Compare every change across four ideas and return to the previous editing position on mobile.',
+    ],
+  },
   {
     date: '2026-09-18',
     titleJa: 'ランダム生成と用途表記の調整',
@@ -439,6 +459,13 @@ export function CharacterStudio() {
   const [randomHistoryItems, setRandomHistoryItems] = useState<HistoryEntry[]>([]);
   const [preferences, setPreferences] = useState<StudioPreferences>(DEFAULT_STUDIO_PREFERENCES);
   const [storageReady, setStorageReady] = useState(false);
+  const [storageLoadFailed, setStorageLoadFailed] = useState(false);
+  const [noteWorkspace, setNoteWorkspace] = useState(createEmptyNoteWorkspace);
+  const [recoveryWorkspace, setRecoveryWorkspace] = useState<StudioWorkspace | null>(null);
+  const [pendingImport, setPendingImport] = useState<{ data: StudioImport; name: string } | null>(null);
+  const [incomingShare, setIncomingShare] = useState<CharacterSnapshot | null>(null);
+  const [shareSource, setShareSource] = useState<CharacterSnapshot | null>(null);
+  const [shareCustomKeys, setShareCustomKeys] = useState<string[]>([]);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [guidedResetOpen, setGuidedResetOpen] = useState(false);
   const [formSessionKey, setFormSessionKey] = useState(0);
@@ -447,6 +474,7 @@ export function CharacterStudio() {
   const [changelogOpen, setChangelogOpen] = useState(false);
   const [batchOpen, setBatchOpen] = useState(false);
   const [batchItems, setBatchItems] = useState<CharacterDraft[]>([]);
+  const [batchBase, setBatchBase] = useState<CharacterSnapshot | null>(null);
   const [renameTarget, setRenameTarget] = useState<SavedPreset | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [historyRenameTarget, setHistoryRenameTarget] = useState<HistoryEntry | null>(null);
@@ -456,6 +484,16 @@ export function CharacterStudio() {
   const [previewInView, setPreviewInView] = useState(false);
   const previewHeadingRef = useRef<HTMLHeadingElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const lastEditedRef = useRef<HTMLElement | null>(null);
+  const editScrollRef = useRef(0);
+
+  const workspace = useMemo<StudioWorkspace>(() => ({
+    current: { draft, locks }, presets: userPresets, history: historyItems,
+    randomHistory: randomHistoryItems, preferences, noteWorkspace, editorMode,
+  }), [draft, locks, userPresets, historyItems, randomHistoryItems, preferences, noteWorkspace, editorMode]);
+  const autosave = useStudioAutosave(workspace, storageReady);
+  const sharedSnapshot = useMemo(() => shareSource ? prepareShareSnapshot(shareSource, shareCustomKeys) : null, [shareSource, shareCustomKeys]);
+  const shareUrl = sharedSnapshot && typeof window !== 'undefined' ? createShareUrl(window.location.href, sharedSnapshot) : '';
 
   const outputs = useMemo(() => generatePrompts(draft), [draft]);
   const notices = useMemo(() => analyzePromptNotices(draft), [draft]);
@@ -509,95 +547,69 @@ export function CharacterStudio() {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       try {
-      const sharedValue = new URL(window.location.href).searchParams.get('state');
-      const sharedCurrent = sharedValue ? decodeShareSnapshot(sharedValue) : null;
-      const savedCurrent = sharedCurrent ?? parseSnapshot(localStorage.getItem(STORAGE_KEYS.current));
-      if (savedCurrent) {
-        setTimeline(replaceEditorTimeline(savedCurrent, sharedCurrent ? 'shared' : 'restored'));
-        if (sharedCurrent) {
-          setLastAction('共有リンクの設定を読み込みました');
-          setAnnouncement('共有リンクの設定を読み込みました');
-          const cleanUrl = new URL(window.location.href);
-          cleanUrl.searchParams.delete('state');
-          window.history.replaceState(null, '', cleanUrl);
-        }
+      const shared = readShareUrl(window.location.href);
+      if (shared.present) {
+        window.history.replaceState(null, '', shared.cleanUrl);
+        if (shared.snapshot) setIncomingShare(shared.snapshot);
+        else toast.add({ title: '共有リンクを読み取れませんでした。現在の入力は変更していません。', type: 'warning' });
       }
-      const savedPresets = parsePresets(localStorage.getItem(STORAGE_KEYS.presets));
+      const savedWorkspaceRaw = localStorage.getItem(WORKSPACE_KEY);
+      const savedWorkspace = parseStudioBackup(savedWorkspaceRaw);
+      if (savedWorkspaceRaw && !savedWorkspace) throw new Error('Unreadable workspace');
+      setRecoveryWorkspace(parseStudioBackup(localStorage.getItem(RECOVERY_KEY)));
+      const savedCurrent = savedWorkspace?.current ?? parseSnapshot(localStorage.getItem(STORAGE_KEYS.current));
+      if (savedCurrent) {
+        setTimeline(replaceEditorTimeline(savedCurrent, 'restored'));
+      }
+      const savedPresets = savedWorkspace?.presets ?? parsePresets(localStorage.getItem(STORAGE_KEYS.presets));
       setUserPresets(savedPresets);
-      const savedHistory = parseHistory(localStorage.getItem(STORAGE_KEYS.history));
+      const savedHistory = savedWorkspace?.history ?? parseHistory(localStorage.getItem(STORAGE_KEYS.history));
       setHistoryItems(savedHistory);
-      const savedRandomHistory = parseHistory(localStorage.getItem(STORAGE_KEYS.randomHistory));
+      const savedRandomHistory = savedWorkspace?.randomHistory ?? parseHistory(localStorage.getItem(STORAGE_KEYS.randomHistory));
       setRandomHistoryItems(savedRandomHistory.length
         ? savedRandomHistory
         : savedHistory.filter((item) => item.source === 'random' || item.source === 'gap' || /おまかせ|ギャップ|テーマ/.test(item.label)));
-      const loadedPreferences = parseStudioPreferences(localStorage.getItem(STORAGE_KEYS.preferences));
+      const loadedPreferences = savedWorkspace?.preferences ?? parseStudioPreferences(localStorage.getItem(STORAGE_KEYS.preferences));
+      if (savedWorkspace) {
+        setNoteWorkspace(savedWorkspace.noteWorkspace);
+        setEditorMode(savedWorkspace.editorMode);
+      }
       const returningUser = Boolean(savedCurrent || savedPresets.length || savedHistory.length);
       const restoredPreferences = returningUser && !loadedPreferences.onboardingSeen
         ? { ...loadedPreferences, onboardingSeen: true }
         : loadedPreferences;
-      setPreferences(sharedCurrent
-        ? { ...restoredPreferences, guidedMode: false, guidedStep: 'purpose' }
-        : restoredPreferences);
-      setLastAction(sharedCurrent
-        ? (loadedPreferences.language === 'ja' ? '共有リンクの設定を読み込みました' : 'Loaded settings from a share link')
-        : (loadedPreferences.language === 'ja' ? '保存済みの設定を表示中' : 'Showing your saved settings'));
-      setOnboardingOpen(!loadedPreferences.onboardingSeen && !sharedCurrent && !returningUser);
+      setPreferences(restoredPreferences);
+      setLastAction(loadedPreferences.language === 'ja' ? '保存済みの設定を表示中' : 'Showing your saved settings');
+      setOnboardingOpen(!loadedPreferences.onboardingSeen && !shared.snapshot && !returningUser);
+      setStorageReady(true);
       } catch {
+        // Preserve unreadable data; never overwrite it with a default workspace.
+        setStorageLoadFailed(true);
         toast.add({ title: '保存データを読み込めませんでした', type: 'warning' });
-      } finally {
-        setStorageReady(true);
       }
     }, 0);
     return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {
-    if (!storageReady) return;
-    const timer = window.setTimeout(() => {
-      try {
-        localStorage.setItem(STORAGE_KEYS.current, JSON.stringify({ draft, locks }));
-      } catch {
-        toast.add({ title: '自動保存に失敗しました', type: 'error' });
+    const receiveShare = () => {
+      const shared = readShareUrl(window.location.href);
+      if (!shared.present) return;
+      window.history.replaceState(null, '', shared.cleanUrl);
+      if (shared.snapshot) {
+        setIncomingShare(shared.snapshot);
+        setOnboardingOpen(false);
+      } else {
+        toast.add({ title: '共有リンクを読み取れませんでした。現在の入力は変更していません。', type: 'warning' });
       }
-    }, 350);
-    return () => window.clearTimeout(timer);
-  }, [draft, locks, storageReady]);
-
-  useEffect(() => {
-    if (!storageReady) return;
-    try {
-      localStorage.setItem(STORAGE_KEYS.presets, JSON.stringify(userPresets));
-    } catch {
-      toast.add({ title: 'プリセットを保存できませんでした', type: 'error' });
-    }
-  }, [storageReady, userPresets]);
-
-  useEffect(() => {
-    if (!storageReady) return;
-    try {
-      localStorage.setItem(STORAGE_KEYS.history, JSON.stringify(historyItems));
-    } catch {
-      toast.add({ title: '履歴を保存できませんでした', type: 'error' });
-    }
-  }, [historyItems, storageReady]);
-
-  useEffect(() => {
-    if (!storageReady) return;
-    try {
-      localStorage.setItem(STORAGE_KEYS.randomHistory, JSON.stringify(randomHistoryItems));
-    } catch {
-      toast.add({ title: 'ランダム履歴を保存できませんでした', type: 'error' });
-    }
-  }, [randomHistoryItems, storageReady]);
-
-  useEffect(() => {
-    if (!storageReady) return;
-    try {
-      localStorage.setItem(STORAGE_KEYS.preferences, JSON.stringify(preferences));
-    } catch {
-      toast.add({ title: tr('表示設定を保存できませんでした', 'Display preferences could not be saved'), type: 'error' });
-    }
-  }, [preferences, storageReady, tr]);
+    };
+    window.addEventListener('hashchange', receiveShare);
+    window.addEventListener('popstate', receiveShare);
+    return () => {
+      window.removeEventListener('hashchange', receiveShare);
+      window.removeEventListener('popstate', receiveShare);
+    };
+  }, []);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -1207,42 +1219,82 @@ export function CharacterStudio() {
   const activeTab = outputTabs.find((tab) => tab.value === outputMode);
   const activeTabLabel = language === 'ja' ? activeTab?.labelJa ?? '' : activeTab?.labelEn ?? '';
 
-  const exportData = () => {
-    const blob = new Blob([exportStudioData(makeSnapshot(), userPresets)], { type: 'application/json' });
+  const downloadJson = (text: string, prefix: string) => {
+    const blob = new Blob([text], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
-    anchor.download = `character-order-room-${new Date().toISOString().slice(0, 10)}.json`;
+    anchor.download = `${prefix}-${new Date().toISOString().slice(0, 10)}.json`;
     anchor.click();
-    URL.revokeObjectURL(url);
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     toast.add({ title: tr('JSONを書き出しました', 'JSON exported'), type: 'success' });
   };
+  const exportData = () => downloadJson(exportStudioBackup(workspace), 'character-order-room-backup');
 
   const importData = async (file: File | undefined) => {
     if (!file) return;
-    if (file.size > 1_000_000) {
-      toast.add({ title: tr('ファイルが大きすぎます', 'File is too large'), description: '1 MB max', type: 'error' });
+    if (file.size > MAX_BACKUP_BYTES) {
+      toast.add({ title: tr('ファイルが大きすぎます', 'File is too large'), description: '10 MB max', type: 'error' });
+      if (importInputRef.current) importInputRef.current.value = '';
       return;
     }
-    const parsed = parseStudioImport(await file.text());
-    if (!parsed) {
-      toast.add({ title: tr('対応しているJSONではありません', 'Unsupported JSON file'), type: 'error' });
-      return;
+    try {
+      const parsed = parseAnyStudioImport(await file.text());
+      if (!parsed) throw new Error('Unsupported backup');
+      setPendingImport({ data: parsed, name: file.name });
+    } catch {
+      toast.add({ title: tr('JSONを読み込めませんでした。現在の入力は変更していません。', 'Could not read JSON. Your current work was not changed.'), type: 'error' });
+    } finally {
+      if (importInputRef.current) importInputRef.current.value = '';
     }
+  };
+
+  const confirmImport = () => {
+    if (!pendingImport || !storageReady || autosave.status === 'conflict') return;
+    const parsed = pendingImport.data;
     const existingIds = new Set(userPresets.map((item) => item.id));
-    const imported = parsed.presets.map((item) => existingIds.has(item.id) ? { ...item, id: freshId(), name: `${item.name}（import）` } : item);
-    setUserPresets((current) => [...imported, ...current]);
-    commitSnapshot(parsed.current, tr('JSONの設定を読み込み', 'Imported JSON settings'), { historySource: 'load' });
-    setPreferences((current) => ({ ...current, guidedMode: false }));
-    toast.add({ title: tr(`設定と${imported.length}件のプリセットを読み込みました`, `Imported settings and ${imported.length} presets`), type: 'success' });
-    if (importInputRef.current) importInputRef.current.value = '';
+    const imported = parsed.presets.map((item) => existingIds.has(item.id)
+      ? { ...item, id: freshId(), name: `${item.name}（import）` } : item);
+    const next: StudioWorkspace = parsed.workspace ?? {
+      ...workspace, current: parsed.current, presets: [...imported, ...userPresets],
+      preferences: { ...preferences, guidedMode: false },
+    };
+    try {
+      // Save the whole previous session before applying any replacement.
+      localStorage.setItem(RECOVERY_KEY, exportStudioBackup(workspace));
+      localStorage.setItem(WORKSPACE_KEY, exportStudioBackup(next));
+    } catch {
+      toast.add({ title: tr('安全に保存できないため、読み込みを中止しました', 'Import stopped because it could not be saved safely'), description: tr('現在の入力は変更していません。先に完全バックアップを書き出してください。', 'Your current work is unchanged. Export a full backup first.'), type: 'error' });
+      return;
+    }
+    setRecoveryWorkspace(workspace);
+    setLastChanges(diffSnapshots(makeSnapshot(), next.current));
+    setShowAllChanges(true);
+    setTimeline(replaceEditorTimeline(next.current, 'imported'));
+    setUserPresets(next.presets);
+    setHistoryItems(next.history);
+    setRandomHistoryItems(next.randomHistory);
+    setPreferences(next.preferences);
+    setNoteWorkspace(next.noteWorkspace);
+    setEditorMode(next.editorMode);
+    setPendingImport(null);
+    setLastAction(tr('確認したデータを読み込みました', 'Imported the reviewed data'));
+    toast.add({ title: tr('読み込みました', 'Imported'), description: tr('「保存・読込」から読込前の状態へ戻せます。', 'Use Save / Load to restore the state before this import.'), type: 'success' });
+  };
+
+  const acceptIncomingShare = () => {
+    if (!incomingShare || autosave.status === 'conflict') return;
+    addHistory(tr('共有リンクを読み込む前', 'Before loading shared settings'), makeSnapshot(), 'load');
+    commitSnapshot(incomingShare, tr('共有リンクの設定を読み込み', 'Loaded shared settings'), { historySource: 'load' });
+    setPreferences((current) => ({ ...current, guidedMode: false, onboardingSeen: true }));
+    setEditorMode('form');
+    setShowAllChanges(true);
+    setIncomingShare(null);
   };
 
   const copyShareLink = () => {
-    const url = new URL(window.location.href);
-    url.search = '';
-    url.searchParams.set('state', encodeShareSnapshot(makeSnapshot()));
-    return copyText(url.toString(), tr('共有リンクをコピー', 'Copied share link'), false);
+    setShareCustomKeys([]);
+    setShareSource(makeSnapshot());
   };
 
   const createBatch = () => {
@@ -1257,6 +1309,7 @@ export function CharacterStudio() {
       return;
     }
     setBatchItems(items);
+    setBatchBase(makeSnapshot());
     setBatchOpen(true);
   };
 
@@ -1287,9 +1340,20 @@ export function CharacterStudio() {
   };
 
   const showPreview = () => {
+    editScrollRef.current = window.scrollY;
     const preview = document.getElementById('prompt-preview');
     preview?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
     window.setTimeout(() => previewHeadingRef.current?.focus({ preventScroll: true }), 350);
+  };
+
+  const returnToEditing = () => {
+    const target = lastEditedRef.current;
+    if (target?.isConnected && target.getClientRects().length) {
+      target.scrollIntoView({ block: 'center', behavior: 'auto' });
+      target.focus({ preventScroll: true });
+    } else {
+      window.scrollTo({ top: editScrollRef.current, behavior: 'auto' });
+    }
   };
 
   const handleEditorTabKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
@@ -1319,7 +1383,7 @@ export function CharacterStudio() {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       const editable = Boolean(target?.closest('input, textarea, select, [contenteditable="true"]'));
-      const modalOpen = managerOpen || onboardingOpen || guidedResetOpen || helpOpen || changelogOpen || batchOpen || Boolean(renameTarget) || Boolean(historyRenameTarget) || Boolean(deleteTarget);
+      const modalOpen = managerOpen || onboardingOpen || guidedResetOpen || helpOpen || changelogOpen || batchOpen || Boolean(renameTarget) || Boolean(historyRenameTarget) || Boolean(deleteTarget) || Boolean(shareSource) || Boolean(incomingShare) || Boolean(pendingImport);
       if (!editable && !modalOpen && event.altKey && /^[1-9]$/.test(event.key)) {
         const section = visibleSections[Number(event.key) - 1];
         if (section) {
@@ -1484,8 +1548,19 @@ export function CharacterStudio() {
             </div>
           </aside>
 
-          <section id="character-inputs" aria-label={tr('キャラクター設定', 'Character settings')} className="min-w-0 scroll-mt-24 px-3 py-5 pb-24 sm:px-6 sm:py-7 sm:pb-24 lg:px-8 xl:pb-7">
+          <section id="character-inputs" aria-label={tr('キャラクター設定', 'Character settings')} onFocusCapture={(event) => {
+            if (event.target instanceof HTMLElement && event.target.matches('input, textarea, [role="combobox"], [role="checkbox"], [role="radio"]')) lastEditedRef.current = event.target;
+          }} className="min-w-0 scroll-mt-24 px-3 py-5 pb-24 sm:px-6 sm:py-7 sm:pb-24 lg:px-8 xl:pb-7">
             <div className="mx-auto max-w-[790px]">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2 text-sm">
+                <span className="text-muted-foreground">{storageLoadFailed || autosave.status === 'conflict' ? tr('自動保存を停止中', 'Autosave paused') : !storageReady ? tr('保存データを確認中…', 'Loading saved work…') : autosave.status === 'saved' ? tr('保存済み · このブラウザ', 'Saved · this browser') : autosave.status === 'error' ? tr('未保存の変更があります', 'Unsaved changes') : tr('保存中…', 'Saving…')}</span>
+                <Button variant="ghost" size="sm" className="min-h-11" onClick={exportData}><Download className="size-4" />{tr('完全バックアップ', 'Full backup')}</Button>
+              </div>
+              {autosave.status === 'conflict' && <p role="alert" className="mb-4 rounded-2xl border border-destructive/30 bg-destructive/5 p-4 text-sm">{tr('別のタブで更新されたため、このタブの自動保存を停止しました。必要なら完全バックアップを書き出してからページを再読み込みしてください。', 'Another tab updated this workspace. Autosave is paused to avoid overwriting it. Export a backup if needed, then reload this page.')}</p>}
+              {(storageLoadFailed || autosave.status === 'error') && <div role="alert" className="mb-4 rounded-2xl border border-destructive/30 bg-destructive/5 p-4 text-sm">
+                <p>{tr(storageLoadFailed ? '保存データを読み取れないため、元のデータを上書きしていません。新しく入力する内容は保存されません。' : 'ブラウザへ保存できません。画面を閉じる前に完全バックアップを書き出してください。', storageLoadFailed ? 'Saved data could not be read, so it has not been overwritten. New input will not be saved.' : 'Browser storage is unavailable. Export a full backup before closing this page.')}</p>
+                {!storageLoadFailed && <Button variant="outline" className="mt-3 min-h-11" onClick={() => autosave.flush()}>{tr('保存を再試行', 'Retry saving')}</Button>}
+              </div>}
               {!preferences.guidedMode && (
                 <div role="tablist" aria-label={tr('入力方法', 'Input method')} aria-orientation="horizontal" className="mb-5 grid min-h-12 w-full grid-cols-2 rounded-2xl bg-muted/65 p-1">
                   <button
@@ -1523,6 +1598,8 @@ export function CharacterStudio() {
                     draft={draft}
                     locks={locks}
                     onApply={applyNoteInference}
+                    workspace={noteWorkspace}
+                    onWorkspaceChange={setNoteWorkspace}
                   />
                 </div>
               )}
@@ -1886,7 +1963,7 @@ export function CharacterStudio() {
                 <p className="flex items-center gap-2 text-sm font-bold text-primary"><Sparkles className="size-3.5" />{tr('入力はこのブラウザだけに保存', 'Saved only in this browser')}</p>
                 <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{tr('入力内容はこの端末内だけに保存され、サーバーや外部AIへ送信されません。', 'Your entries stay in local browser storage and are not sent to a server or external AI.')}</p>
               </div>
-              <Button variant="ghost" size="sm" className="mt-3 min-h-11 w-full rounded-xl xl:hidden" onClick={() => document.getElementById('character-inputs')?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' })}>{tr('入力へ戻る', 'Back to settings')}</Button>
+              <Button variant="ghost" size="sm" className="mt-3 min-h-11 w-full rounded-xl xl:hidden" onClick={returnToEditing}>{tr('編集していた場所へ戻る', 'Return to where you were editing')}</Button>
             </div>
           </aside>
         </div>
@@ -1900,7 +1977,9 @@ export function CharacterStudio() {
                 : tr('指示書を確認', 'Review brief')}
             </Button>
           </div>
-        ) : editorMode === 'form' && !previewInView ? (
+        ) : previewInView ? (
+          <Button className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] left-1/2 z-30 min-h-11 w-[min(92vw,360px)] -translate-x-1/2 gap-2 rounded-2xl shadow-xl xl:hidden" onClick={returnToEditing}>{tr('編集していた場所へ戻る', 'Back to your edit')}</Button>
+        ) : editorMode === 'form' ? (
           <Button
             className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] left-1/2 z-30 min-h-11 w-[min(92vw,360px)] -translate-x-1/2 gap-2 rounded-2xl shadow-xl xl:hidden"
             onClick={showPreview}
@@ -1919,10 +1998,12 @@ export function CharacterStudio() {
           </DialogHeader>
           <div className="shrink-0 border-b border-border bg-muted/25 p-4">
             <div className="flex flex-wrap items-center gap-2">
-              <Button variant="outline" size="sm" className="min-h-11 gap-2 rounded-xl bg-card" onClick={exportData}><Download className="size-4" />{tr('JSON書出', 'Export JSON')}</Button>
+              <Button variant="outline" size="sm" className="min-h-11 gap-2 rounded-xl bg-card" onClick={exportData}><Download className="size-4" />{tr('完全バックアップ', 'Full backup')}</Button>
               <Button variant="outline" size="sm" className="min-h-11 gap-2 rounded-xl bg-card" onClick={() => importInputRef.current?.click()}><Upload className="size-4" />{tr('JSON読込', 'Import JSON')}</Button>
               <Button variant="outline" size="sm" className="min-h-11 gap-2 rounded-xl bg-card" onClick={copyShareLink}><Link2 className="size-4" />{tr('共有リンク', 'Share link')}</Button>
               <input ref={importInputRef} type="file" accept="application/json,.json" className="sr-only" onChange={(event) => void importData(event.target.files?.[0])} />
+              <p className="basis-full text-sm leading-relaxed text-muted-foreground">{tr('入力・プリセット・履歴・お気に入り・表示設定・メモ下書きをまとめて保存します。別端末への移行は、このJSONを読み込んでください。ファイルには未公開の設定も含まれます。', 'Back up settings, presets, history, favorites, preferences, and note drafts. Import this JSON on another device. It can contain unpublished material.')}</p>
+              {recoveryWorkspace && <Button variant="outline" className="min-h-11" onClick={() => setPendingImport({ name: tr('読込前の退避データ', 'Pre-import recovery data'), data: { current: recoveryWorkspace.current, presets: recoveryWorkspace.presets, workspace: recoveryWorkspace } })}>{tr('読込前の状態に戻す', 'Restore pre-import state')}</Button>}
               <span className="ml-auto flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2">
                 <span className="text-sm font-semibold">{tr('かんたん', 'Simple')}</span>
                 <Switch disabled={preferences.guidedMode} checked={preferences.simpleMode} onCheckedChange={(checked) => setPreferences((current) => ({ ...current, simpleMode: Boolean(checked) }))} aria-label={tr('かんたん表示', 'Simple mode')} />
@@ -2142,7 +2223,7 @@ export function CharacterStudio() {
                   },
                   {
                     title: tr('保存・復元する', 'Save and restore'),
-                    body: tr('「保存・読込」からプリセット、編集履歴、JSON、共有リンクを利用できます。元に戻す・やり直すにも対応しています。', 'Save / Load provides presets, edit history, JSON, and share links. Undo and Redo are also available.'),
+                    body: tr('入力・メモ下書き・候補の採用状態は、このブラウザへ自動保存されます。「完全バックアップ」は履歴やお気に入りも含むJSONです。読込前に置き換える内容を確認でき、読込前の状態へ1世代戻せます。', 'Settings, note drafts, and candidate decisions are autosaved in this browser. Full backup JSON includes history and favorites. Review imports before replacing anything, and restore one pre-import session if needed.'),
                   },
                   {
                     title: tr('形式を選んでコピー', 'Choose a format and copy'),
@@ -2159,7 +2240,8 @@ export function CharacterStudio() {
               </ol>
               <div className="mt-4 rounded-2xl border border-primary/15 bg-primary/[0.055] p-4">
                 <p className="flex items-center gap-2 text-sm font-bold text-primary"><Lock className="size-4" />{tr('入力はこのブラウザ内に保存', 'Saved in this browser')}</p>
-                <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{tr('入力内容は外部AIへ自動送信されません。共有リンクには、その時点の設定が含まれます。', 'Your entries are not automatically sent to an external AI. A share link contains the settings captured when it is created.')}</p>
+                <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{tr('入力内容は外部AIへ自動送信されません。共有前に自由入力を含めるか選べます。メモ下書きや履歴は共有リンクに含みませんが、URLを知っている人は内容を読めます。リンクは暗号化されず、後から無効化もできません。', 'Entries are not automatically sent to an external AI. Choose which custom text to include before sharing. Note drafts and history are excluded, but anyone with the URL can read the shared settings. Links are not encrypted and cannot be revoked.')}</p>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{tr('自動保存は端末・ブラウザ・サイトごとです。ブラウザのデータ削除では失われるため、大切な設定は完全バックアップを保存してください。別タブの更新を検出すると上書きを防ぐため保存を停止します。', 'Autosave is specific to this device, browser, and site. Clearing browser data removes it; keep full backups of important work. If another tab updates the workspace, autosave pauses to prevent overwriting it.')}</p>
               </div>
             </TabsContent>
             <TabsContent value="shortcuts" className="mt-0 min-h-0 overflow-y-auto px-5 pb-5 pt-4 overscroll-contain">
@@ -2210,17 +2292,85 @@ export function CharacterStudio() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={Boolean(shareSource)} onOpenChange={(open) => { if (!open) setShareSource(null); }}>
+        <DialogContent className="flex max-h-[90dvh] flex-col overflow-hidden sm:max-w-3xl">
+          <DialogHeader className="shrink-0 pr-8">
+            <DialogTitle>{tr('共有する内容を確認', 'Review what you share')}</DialogTitle>
+            <DialogDescription>{tr('リンクを知っている人は設定を読めます。暗号化やアクセス制限はありません。', 'Anyone with the link can read the settings. It is not encrypted or access-restricted.')}</DialogDescription>
+          </DialogHeader>
+          <div className="min-h-0 space-y-4 overflow-y-auto overscroll-contain">
+            <p className="rounded-xl bg-muted p-3 text-sm">{tr('選択した項目を共有します。メモ下書き・履歴・プリセット・ロック・ギャップの変更履歴は含めません。自由入力は初期状態では除外します。', 'Selected settings are shared. Note drafts, history, presets, locks, and contrast provenance are excluded. Custom text is excluded by default.')}</p>
+            <fieldset className="space-y-2 rounded-xl border border-border p-3">
+              <legend className="px-1 font-semibold">{tr('共有に含める自由入力', 'Custom text to include')}</legend>
+              {Object.entries(shareSource?.draft.custom ?? {}).filter(([, value]) => value.trim()).length === 0 && <p className="text-sm text-muted-foreground">{tr('自由入力はありません。', 'No custom text.')}</p>}
+              {Object.entries(shareSource?.draft.custom ?? {}).filter(([, value]) => value.trim()).map(([key, value]) => <label key={key} className="flex min-h-11 cursor-pointer items-start gap-3 rounded-lg p-2 hover:bg-muted">
+                <Checkbox className="mt-1" checked={shareCustomKeys.includes(key)} onCheckedChange={(checked) => setShareCustomKeys((current) => checked ? [...current, key] : current.filter((item) => item !== key))} />
+                <span className="min-w-0 text-sm"><span className="block font-semibold">{({ purpose: tr('用途', 'Purpose'), style: tr('絵柄', 'Style'), character: tr('人物', 'Character'), appearance: tr('顔・髪', 'Appearance'), outfit: tr('衣装', 'Outfit'), action: tr('表情・ポーズ', 'Pose'), scene: tr('背景・光', 'Scene'), negatives: tr('禁止事項', 'Exclusions') } as Record<string, string>)[key] ?? key}</span><span className="block whitespace-pre-wrap break-words text-muted-foreground">{value}</span></span>
+              </label>)}
+            </fieldset>
+            {sharedSnapshot && <>
+              <section className="rounded-xl border border-border p-3"><h3 className="font-semibold">{tr('共有内容のプレビュー', 'Shared brief preview')}</h3><p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed">{generatePrompts(sharedSnapshot.draft)[language === 'ja' ? 'ja' : 'en'] || tr('未設定', 'Not set')}</p></section>
+              <details className="rounded-xl border border-border p-3"><summary className="min-h-11 cursor-pointer font-semibold">{tr('共有される設定をすべて確認', 'Review all included settings')}</summary><ChangeList changes={diffSnapshots(createBlankSnapshot(), sharedSnapshot)} language={language} /></details>
+            </>}
+            <p className="text-sm text-muted-foreground">{tr('リンクは現在の設定のコピーです。後から編集しても共有済みの内容は変わらず、リンクを無効化することもできません。', 'The link is a snapshot. Later edits do not update an existing link, and links cannot be revoked.')}</p>
+            {shareUrl.length <= MAX_SHARE_URL_LENGTH && <label className="block text-sm font-semibold">{tr('共有リンク（手動コピーもできます）', 'Share link (also available for manual copy)')}<Textarea readOnly value={shareUrl} className="mt-2 min-h-20 break-all font-mono text-sm" onFocus={(event) => event.target.select()} /></label>}
+            {shareUrl.length > MAX_SHARE_URL_LENGTH && <p role="alert" className="text-sm text-destructive">{tr('内容が長いためリンクでは共有できません。共有用JSONを利用してください。', 'This content is too long for a share link. Use the share JSON instead.')}</p>}
+          </div>
+          <DialogFooter className="shrink-0 flex-wrap">
+            <Button variant="outline" className="min-h-11" onClick={() => setShareSource(null)}>{tr('閉じる', 'Close')}</Button>
+            <Button variant="outline" className="min-h-11" onClick={() => sharedSnapshot && downloadJson(exportStudioData(sharedSnapshot, []), 'character-order-room-share')}>{tr('共有用JSON', 'Share JSON')}</Button>
+            <Button className="min-h-11" disabled={!sharedSnapshot || shareUrl.length > MAX_SHARE_URL_LENGTH} onClick={() => void copyText(shareUrl, tr('共有リンクをコピー', 'Copied share link'), false)}>{tr('この内容のリンクをコピー', 'Copy this share link')}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(incomingShare)} onOpenChange={(open) => { if (!open) setIncomingShare(null); }}>
+        <DialogContent className="flex max-h-[90dvh] flex-col overflow-hidden sm:max-w-3xl">
+          <DialogHeader className="shrink-0 pr-8"><DialogTitle>{tr('共有設定を読み込みますか？', 'Load these shared settings?')}</DialogTitle><DialogDescription>{tr('まだ入力は変更していません。読み込むと現在のフォームを置き換えます。メモ・保存済みプリセットはそのままです。変更前のフォームは履歴へ残します。', 'Nothing has changed yet. Loading replaces the form, but keeps your note and presets. The previous form is retained in history.')}</DialogDescription></DialogHeader>
+          <div className="min-h-0 overflow-y-auto overscroll-contain">{incomingShare && <ChangeList changes={diffSnapshots(makeSnapshot(), incomingShare)} language={language} />}</div>
+          <DialogFooter className="shrink-0"><Button variant="outline" className="min-h-11" onClick={() => setIncomingShare(null)}>{tr('読み込まない', 'Keep my work')}</Button><Button className="min-h-11" disabled={!storageReady || autosave.status === 'conflict'} onClick={acceptIncomingShare}>{tr('確認して読み込む', 'Load reviewed settings')}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(pendingImport)} onOpenChange={(open) => { if (!open) setPendingImport(null); }}>
+        <DialogContent className="flex max-h-[90dvh] flex-col overflow-hidden sm:max-w-3xl">
+          <DialogHeader className="shrink-0 pr-8"><DialogTitle>{tr('JSON読込前の確認', 'Review JSON import')}</DialogTitle><DialogDescription className="break-all">{pendingImport?.name}</DialogDescription></DialogHeader>
+          <div className="min-h-0 space-y-4 overflow-y-auto overscroll-contain">
+            <p className="text-sm leading-relaxed">{pendingImport?.data.workspace
+              ? tr('完全バックアップです。現在の入力・プリセット・履歴・お気に入り・表示設定・メモ下書きを置き換えます。読み込み前の全データを1世代退避し、あとから戻せます。', 'This is a full backup. It replaces settings, presets, history, favorites, preferences, and note drafts. One complete pre-import session is kept for recovery.')
+              : tr('従来形式のJSONです。現在のフォームを置き換え、プリセットを追加します。メモ・履歴・お気に入りは保持します。読み込み前の全データも退避します。', 'This is a legacy/share JSON. It replaces the form and adds presets, keeping your note, history, and favorites. Your full previous session is also kept for recovery.')}</p>
+            <p className="text-sm font-semibold">{tr(`読み込むプリセット：${pendingImport?.data.presets.length ?? 0}件`, `Presets in file: ${pendingImport?.data.presets.length ?? 0}`)}</p>
+            {pendingImport?.data.workspace && <p className="text-sm">{tr(`履歴：${pendingImport.data.workspace.history.length}件 · メモ：${pendingImport.data.workspace.noteWorkspace.note.length}文字`, `History: ${pendingImport.data.workspace.history.length} · Note: ${pendingImport.data.workspace.noteWorkspace.note.length} characters`)}</p>}
+            {pendingImport && <ChangeList changes={diffSnapshots(makeSnapshot(), pendingImport.data.current)} language={language} />}
+          </div>
+          <DialogFooter className="shrink-0"><Button variant="outline" className="min-h-11" onClick={() => setPendingImport(null)}>{tr('キャンセル', 'Cancel')}</Button><Button className="min-h-11" disabled={!storageReady || autosave.status === 'conflict'} onClick={confirmImport}>{tr('退避して読み込む', 'Back up and import')}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={batchOpen} onOpenChange={setBatchOpen}>
-        <DialogContent showCloseButton={false} className="max-h-[92vh] overflow-hidden p-0 sm:max-w-3xl">
+        <DialogContent showCloseButton={false} className="flex max-h-[92dvh] flex-col overflow-hidden p-0 sm:max-w-5xl">
           <DialogHeader className="relative border-b border-border p-5 pr-16">
             <DialogTitle>{tr('4つの差分案', 'Four variations')}</DialogTitle>
             <DialogDescription>{tr('現在の設定とロックを基準に作りました。採用するまで現在の内容は変わりません。', 'These use your current settings and locks. Nothing changes until you adopt one.')}</DialogDescription>
             <Button variant="ghost" size="icon" className="absolute right-3 top-3" onClick={() => setBatchOpen(false)} aria-label={tr('閉じる', 'Close')}><X className="size-4" /></Button>
           </DialogHeader>
           <div className="grid min-h-0 gap-3 overflow-y-auto p-5 sm:grid-cols-2">
+            {batchBase && <details className="min-w-0 rounded-xl border border-border p-3 sm:col-span-2">
+              <summary className="min-h-11 cursor-pointer font-semibold">{tr('4案を表で比較（変更のある全項目）', 'Compare all changed fields across four ideas')}</summary>
+              <p className="pb-2 text-xs text-muted-foreground">{tr('横にスクロールすると、4案すべてを確認できます。', 'Scroll horizontally to see all four ideas.')}</p>
+              <div className="overflow-x-auto" tabIndex={0} role="region" aria-label={tr('4案の比較表。横にスクロールできます', 'Four-idea comparison. Scroll horizontally')}>
+                <table className="w-full min-w-[700px] text-left text-sm"><caption className="py-2 text-left text-muted-foreground">{tr('生成時の入力と比較しています。変更がない案には「同じ」と表示します。', 'Compared with the settings at generation time. Unchanged values are marked “Same”.')}</caption>
+                  <thead><tr>{[tr('項目', 'Field'), tr('現在', 'Current'), ...batchItems.map((_, index) => tr(`案${index + 1}`, `Idea ${index + 1}`))].map((label) => <th key={label} className="border-b p-3">{label}</th>)}</tr></thead>
+                  <tbody>{[...new Map(batchItems.flatMap((item) => diffSnapshots(batchBase, { draft: item, locks: batchBase.locks })).map((change) => [change.id, change])).values()].map((row) => <tr key={row.id}>
+                    <th scope="row" className="border-b p-3">{language === 'ja' ? row.labelJa : row.labelEn}</th><td className="max-w-48 break-words border-b p-3 text-muted-foreground">{language === 'ja' ? row.beforeJa : row.beforeEn}</td>
+                    {batchItems.map((item, index) => { const change = diffSnapshots(batchBase, { draft: item, locks: batchBase.locks }).find((entry) => entry.id === row.id); return <td key={index} className="max-w-48 break-words border-b p-3">{change ? language === 'ja' ? change.afterJa : change.afterEn : tr('同じ', 'Same')}</td>; })}
+                  </tr>)}</tbody>
+                </table>
+              </div>
+            </details>}
             {batchItems.map((item, index) => {
               const snapshot = { draft: item, locks };
-              const changes = diffSnapshots(makeSnapshot(), snapshot);
+              const changes = diffSnapshots(batchBase ?? makeSnapshot(), snapshot);
               const itemOutputs = generatePrompts(item);
               return (
                 <article key={`${index}-${JSON.stringify(item).slice(0, 60)}`} className="rounded-2xl border border-border bg-card p-4">
@@ -2229,6 +2379,8 @@ export function CharacterStudio() {
                   <ul className="mt-3 space-y-1 text-sm text-muted-foreground">
                     {changes.slice(0, 4).map((change) => <li key={change.id}>{language === 'ja' ? change.labelJa : change.labelEn}: {language === 'ja' ? change.afterJa : change.afterEn}</li>)}
                   </ul>
+                  <details className="mt-3 rounded-xl border border-border p-3"><summary className="min-h-11 cursor-pointer text-sm font-semibold">{tr(`全${changes.length}件の変更前・変更後`, `Before and after for all ${changes.length} changes`)}</summary><ChangeList changes={changes} language={language} /></details>
+                  <details className="mt-2 rounded-xl border border-border p-3"><summary className="min-h-11 cursor-pointer text-sm font-semibold">{tr('採用前に指示書を確認', 'Preview the brief before adopting')}</summary><p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{itemOutputs[outputMode]}</p></details>
                   <div className="mt-4 grid grid-cols-2 gap-2">
                     <Button variant="outline" size="sm" className="min-h-11 rounded-xl" onClick={() => copyText(itemOutputs[outputMode], tr(`案${index + 1}をコピー`, `Copied idea ${index + 1}`), false)}><Clipboard className="size-4" />{tr('コピー', 'Copy')}</Button>
                     <Button size="sm" className="min-h-11 rounded-xl" onClick={() => adoptBatch(item, index)}><Check className="size-4" />{tr('採用', 'Adopt')}</Button>
