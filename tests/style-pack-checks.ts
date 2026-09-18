@@ -90,6 +90,8 @@ assert.ok(!formatPromptBlocks({ ...blocks, ANTI_AI: '' }).includes('[ANTI_AI]'))
 assert.equal(generateStudioPrompts({ ...snapshot.draft, stylePack: { ...selection, excludedBlocks: ['AVOID'] } }).blocks, formatPromptBlocks(blocks, ['AVOID']));
 assert.equal(generateStudioPrompts(createBlankSnapshot().draft).blocks, '');
 assert.equal(hydrateDraft(defaultDraft).stylePack, undefined, '旧入力に画風を追加しない');
+const defaultWithStyle = generatePrompts({ ...hydrateDraft(defaultDraft), stylePack: selection });
+for (const phrase of ['文字なし', 'ロゴなし', '透かしなし']) assert.equal(defaultWithStyle.negativeJa.split(phrase).length - 1, 1, '標準の禁止事項を二重に出力しない');
 assert.deepEqual(hydrateDraft(snapshot.draft).stylePack, selection);
 assert.deepEqual(decodeShareSnapshot(encodeShareSnapshot(prepareShareSnapshot(snapshot)))?.draft.stylePack, selection);
 assert.deepEqual(parseStudioImport(exportStudioData(snapshot, []))?.current.draft.stylePack, selection);

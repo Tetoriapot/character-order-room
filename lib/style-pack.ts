@@ -62,7 +62,7 @@ export function buildAntiAiBlock(ids: string[]) {
 }
 
 export const defaultStyleAvoid = ['no text', 'no logo', 'no watermark', 'avoid photorealism', 'avoid cluttered background', 'avoid random decorative props'];
-export const defaultStyleAvoidJa = ['文字を入れない', 'ロゴを入れない', '透かしを入れない', '写実的な写真表現を避ける', '背景を過密にしない', '無関係な装飾小物を加えない'];
+export const defaultStyleAvoidJa = ['文字なし', 'ロゴなし', '透かしなし', '写実的な写真表現を避ける', '背景を過密にしない', '無関係な装飾小物を加えない'];
 
 export function stylePackWarnings(selection?: StylePackSelection) {
   const style = findStylePreset(selection?.presetId);
