@@ -1,6 +1,7 @@
 import { englishFor, labelFor } from '@/data/options';
 import type { CharacterSnapshot, LockKey, UiLanguage } from './character-types';
 import { emptyStylePack, findAntiAiBlock, findStylePreset } from './style-pack';
+import { blankPerson, castChoiceLabel, castInteractions, castPositions, castRelationships, memberDraft, PERSON_CUSTOM_KEYS, PERSON_FIELDS, syncCast } from './character-cast';
 
 export type CharacterChange = {
   id: string;
@@ -53,8 +54,12 @@ const customFieldLabels: Record<string, { ja: string; en: string }> = {
 };
 
 export function diffSnapshots(before: CharacterSnapshot, after: CharacterSnapshot): CharacterChange[] {
+  before = syncCast(before);
+  after = syncCast(after);
   const changes: CharacterChange[] = [];
+  const hasCast = Boolean(before.draft.cast || after.draft.cast);
   for (const field of Object.keys(fieldLabels) as LockKey[]) {
+    if (hasCast && PERSON_FIELDS.includes(field)) continue;
     const previous = before.draft[field] as string | string[];
     const next = after.draft[field] as string | string[];
     if (!sameValue(previous, next)) {
@@ -77,6 +82,7 @@ export function diffSnapshots(before: CharacterSnapshot, after: CharacterSnapsho
   }
   const customKeys = new Set([...Object.keys(before.draft.custom), ...Object.keys(after.draft.custom)]);
   for (const key of customKeys) {
+    if (hasCast && PERSON_CUSTOM_KEYS.includes(key)) continue;
     if ((before.draft.custom[key] ?? '') === (after.draft.custom[key] ?? '')) continue;
     const labels = customFieldLabels[key] ?? { ja: '自由入力', en: 'Custom text' };
     changes.push({
@@ -88,7 +94,7 @@ export function diffSnapshots(before: CharacterSnapshot, after: CharacterSnapsho
   }
   const beforeGap = before.draft.generatedGap;
   const afterGap = after.draft.generatedGap;
-  if (beforeGap?.seedId !== afterGap?.seedId || beforeGap?.labelJa !== afterGap?.labelJa) {
+  if (!hasCast && (beforeGap?.seedId !== afterGap?.seedId || beforeGap?.labelJa !== afterGap?.labelJa)) {
     changes.push({
       id: 'generated-gap',
       labelJa: 'ギャップ案', labelEn: 'Contrast concept',
@@ -117,12 +123,38 @@ export function diffSnapshots(before: CharacterSnapshot, after: CharacterSnapsho
     beforeJa: previousStyle.excludedBlocks.join('、') || 'なし', beforeEn: previousStyle.excludedBlocks.join(', ') || 'None',
     afterJa: nextStyle.excludedBlocks.join('、') || 'なし', afterEn: nextStyle.excludedBlocks.join(', ') || 'None',
   });
+  if (hasCast) {
+    const previous = before.draft.cast;
+    const next = after.draft.cast;
+    const push = (id: string, ja: string, en: string, beforeJa: string, afterJa: string, beforeEn = beforeJa, afterEn = afterJa) => {
+      if (beforeJa !== afterJa || beforeEn !== afterEn) changes.push({ id, labelJa: ja, labelEn: en, beforeJa, afterJa, beforeEn, afterEn });
+    };
+    push('cast-mode', '人数モード', 'Character count mode', previous?.enabled ? `${previous.members.length}人` : '1人', next?.enabled ? `${next.members.length}人` : '1人', previous?.enabled ? `${previous.members.length} people` : 'One person', next?.enabled ? `${next.members.length} people` : 'One person');
+    for (const [field, choices, ja, en] of [
+      ['relationship', castRelationships, '人物同士の関係', 'Relationship'], ['interaction', castInteractions, '全員の動作', 'Group action'],
+    ] as const) push(`cast-${field}`, ja, en, castChoiceLabel(choices, previous?.[field] ?? '', 'ja'), castChoiceLabel(choices, next?.[field] ?? '', 'ja'), castChoiceLabel(choices, previous?.[field] ?? '', 'en'), castChoiceLabel(choices, next?.[field] ?? '', 'en'));
+    const ids = [...new Set([...(next?.members ?? []).map((item) => item.id), ...(previous?.members ?? []).map((item) => item.id)])];
+    for (const [index, id] of ids.entries()) {
+      const oldMember = previous?.members.find((member) => member.id === id);
+      const newMember = next?.members.find((member) => member.id === id);
+      const ja = `人物${index + 1}`;
+      const en = `Person ${index + 1}`;
+      push(`cast-${id}-present`, ja, en, oldMember ? 'あり' : 'なし', newMember ? 'あり' : 'なし', oldMember ? 'Present' : 'None', newMember ? 'Present' : 'None');
+      push(`cast-${id}-name`, `${ja}の識別名`, `${en} label`, oldMember?.name ?? '', newMember?.name ?? '');
+      push(`cast-${id}-position`, `${ja}の配置`, `${en} placement`, castChoiceLabel(castPositions, oldMember?.position ?? '', 'ja'), castChoiceLabel(castPositions, newMember?.position ?? '', 'ja'), castChoiceLabel(castPositions, oldMember?.position ?? '', 'en'), castChoiceLabel(castPositions, newMember?.position ?? '', 'en'));
+      const base = { ...after.draft, cast: undefined };
+      const oldDraft = oldMember ? memberDraft(base, oldMember) : !previous && index === 0 ? { ...base, ...Object.fromEntries(PERSON_FIELDS.map((field) => [field, before.draft[field]])), custom: { ...base.custom, ...Object.fromEntries(PERSON_CUSTOM_KEYS.map((key) => [key, before.draft.custom[key] ?? ''])) }, generatedGap: before.draft.generatedGap } : blankPerson(base);
+      const newDraft = newMember ? memberDraft(base, newMember) : !next && index === 0 ? base : blankPerson(base);
+      changes.push(...diffSnapshots({ draft: oldDraft, locks: oldMember?.locks ?? {} }, { draft: newDraft, locks: newMember?.locks ?? {} }).map((change) => ({ ...change, id: `cast-${id}-${change.id}`, labelJa: `${ja}：${change.labelJa}`, labelEn: `${en}: ${change.labelEn}` })));
+    }
+  }
   return changes;
 }
 
 export function snapshotSummary(snapshot: CharacterSnapshot, language: UiLanguage = 'ja') {
   const { draft } = snapshot;
   const parts = [
+    draft.cast?.enabled ? (language === 'ja' ? `${draft.cast.members.length}人` : `${draft.cast.members.length} people`) : '',
     language === 'ja' ? findStylePreset(draft.stylePack?.presetId)?.nameJa : findStylePreset(draft.stylePack?.presetId)?.nameEn,
     formatValue('purpose', draft.purpose, language),
     formatValue('species', draft.species, language),

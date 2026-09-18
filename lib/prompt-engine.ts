@@ -1,5 +1,6 @@
 import { translateFreeText } from '@/data/translations';
 import { isSceneComposition } from '@/data/camera-expansion';
+import { blankPerson, castChoiceLabel, castInteractions, castPositions, castRelationships, isCastActive, memberDraft, PERSON_CUSTOM_KEYS, PERSON_FIELDS, syncCast } from './character-cast';
 import {
   englishFor,
   findChoice,
@@ -278,6 +279,18 @@ const fieldName = (field: LockKey, language: 'ja' | 'en') =>
 
 /** Returns user-facing explanations for values that are intentionally omitted or normalized. */
 export function analyzePromptNotices(sourceDraft: CharacterDraft): PromptNotice[] {
+  if (isCastActive(sourceDraft)) {
+    const draft = syncCast({ draft: sourceDraft, locks: {} }).draft;
+    const notices = draft.cast!.members.flatMap((member, index) => analyzePromptNotices(memberDraft(draft, member)).map((notice) => ({
+      ...notice, id: `${member.id}-${notice.id}`, labelJa: `人物${index + 1}：${notice.labelJa}`, labelEn: `Person ${index + 1}: ${notice.labelEn}`,
+    })));
+    if (draft.negatives.includes('one-person') || draft.negatives.includes('no-people')) notices.push({
+      id: 'cast-count-override', kind: 'excluded', field: 'negatives', labelJa: '人数指定を優先', labelEn: 'Group count takes priority',
+      reasonJa: '複数人モードでは「人物は1人だけ」「人物なし」を出力せず、設定した人数を使います。', reasonEn: 'Single-person and no-people constraints are omitted; the configured group count is used.',
+    });
+    if (draft.cast!.interaction) notices.push({ id: 'cast-action-override', kind: 'info', field: 'pose', labelJa: '全員の動作を優先', labelEn: 'Group action takes priority', reasonJa: '個別のポーズと表情・ポーズの自由入力は保持したまま出力から外しています。', reasonEn: 'Individual poses and custom action notes are retained but omitted.' });
+    return notices;
+  }
   const draft = resolveDraftConflicts(sourceDraft);
   const activeStyle = findStylePreset(draft.stylePack?.presetId);
   const notices: PromptNotice[] = [];
@@ -472,7 +485,8 @@ export function analyzePromptNotices(sourceDraft: CharacterDraft): PromptNotice[
   return notices;
 }
 
-export function generatePrompts(sourceDraft: CharacterDraft): PromptOutputs {
+export function generatePrompts(sourceDraft: CharacterDraft, negativeContexts?: CharacterDraft[]): PromptOutputs {
+  if (isCastActive(sourceDraft)) return generateCastPrompts(sourceDraft);
   const draft = resolveDraftConflicts(sourceDraft);
   const backgroundOnly = draft.purpose === 'background';
   const purposeJa = draft.purpose ? labelFor('purpose', draft.purpose) : '';
@@ -630,11 +644,14 @@ export function generatePrompts(sourceDraft: CharacterDraft): PromptOutputs {
     ...customPositiveEn.map((value) => sentenceEn(`Additional direction: ${value}`)),
   ]);
 
+  const hasNegativeConflict = (value: string) => negativeContexts
+    ? negativeContexts.some((context) => conflictsWithPositive(value, context, [...customPositive, ...Object.entries(context.custom).filter(([key]) => key !== 'negatives').map(([, text]) => text)]))
+    : conflictsWithPositive(value, draft, customPositive);
   const fixedNegativeChoices = dedupeChoices(choicesFor('negatives', draft.negatives))
     .filter((choice) => backgroundOnly ? choice.id !== 'one-person' : choice.id !== 'no-people')
-    .filter((choice) => !conflictsWithPositive(choice.labelEn, draft, customPositive));
+    .filter((choice) => !hasNegativeConflict(choice.labelEn));
   const customNegativeItems = splitCustomNegatives(draft.custom.negatives ?? '')
-    .filter((value) => !conflictsWithPositive(value, draft, customPositive));
+    .filter((value) => !hasNegativeConflict(value));
   const negativeItemsJa = uniqueSemantic([
     ...(activeStyle ? defaultStyleAvoidJa : []),
     ...fixedNegativeChoices.map((choice) => choice.labelJa),
@@ -699,6 +716,42 @@ export function generatePrompts(sourceDraft: CharacterDraft): PromptOutputs {
     short,
     tags,
   };
+}
+
+function generateCastPrompts(source: CharacterDraft): PromptOutputs {
+  const draft = syncCast({ draft: source, locks: {} }).draft;
+  const cast = draft.cast!;
+  const people = cast.members.map((member) => {
+    const person = memberDraft(draft, member);
+    return cast.interaction ? { ...person, pose: '', custom: { ...person.custom, action: '' } } : person;
+  });
+  const incompatibleCount = /人物は?\s*[1一]人|人物なし|一人だけ|ひとり|複数.*(?:禁止|なし)|no people|single character|exactly one|\bsolo\b|no (?:other |extra )?(?:characters|people)|multiple (?:characters|people)/i;
+  const shared = blankPerson(draft);
+  shared.negatives = draft.negatives.filter((id) => !['one-person', 'no-people', 'avoid-multiple-heads'].includes(id));
+  shared.custom = Object.fromEntries(Object.entries(shared.custom).filter(([key]) => !PERSON_CUSTOM_KEYS.includes(key)));
+  shared.custom.negatives = splitCustomNegatives(draft.custom.negatives ?? '').filter((value) => !incompatibleCount.test(value)).join('\n');
+  const common = generatePrompts(shared, people.map((person) => resolveDraftConflicts(person)));
+  const individual = people.map((person) => generatePrompts({ ...person,
+    ...Object.fromEntries((Object.keys(optionsByField) as LockKey[]).filter((field) => !PERSON_FIELDS.includes(field)).map((field) => [field, Array.isArray(person[field]) ? [] : ''])),
+    stylePack: undefined, custom: Object.fromEntries(Object.entries(person.custom).filter(([key]) => PERSON_CUSTOM_KEYS.includes(key))),
+  }));
+  const groupJa = `登場人物は${cast.members.length}人。人物ごとの髪・瞳・衣装を混同しない。指定した人物以外は追加しない。`;
+  const groupEn = `Exactly ${cast.members.length} distinct characters. Keep each person's hair, eyes, and clothing separate. Do not add any unlisted characters.`;
+  const directions = (language: 'ja' | 'en') => [
+    cast.relationship ? `${language === 'ja' ? '関係' : 'Relationship'}: ${castChoiceLabel(castRelationships, cast.relationship, language)}` : '',
+    cast.interaction ? `${language === 'ja' ? '全員の動作' : 'Group action'}: ${castChoiceLabel(castInteractions, cast.interaction, language)}` : '',
+  ].filter(Boolean).join('; ');
+  const label = (index: number, language: 'ja' | 'en') => {
+    const member = cast.members[index];
+    return `${language === 'ja' ? '人物' : 'Person '}${index + 1}${member.name ? ` (${member.name})` : ''}${member.position ? ` — ${castChoiceLabel(castPositions, member.position, language)}` : ''}`;
+  };
+  const positiveJa = [groupJa, common.positiveJa, directions('ja'), ...individual.map((output, index) => `【${label(index, 'ja')}】\n${output.positiveJa || '詳細は未指定。'}`)].filter(Boolean).join('\n\n');
+  const positiveEn = [groupEn, common.positiveEn, directions('en'), ...individual.map((output, index) => `[${label(index, 'en')}]\n${output.positiveEn || 'Details unspecified.'}`)].filter(Boolean).join('\n\n');
+  const compactGroup = (mode: 'short' | 'tags') => [groupEn, common[mode].replace(/\nConstraints:[\s\S]*$/i, ''), directions('en'), ...individual.map((output, index) => `[${label(index, 'en')}]: ${output[mode].replace(/\nConstraints:[\s\S]*$/i, '') || 'Details unspecified'}`), common.negativeEn].filter(Boolean).join('\n');
+  const ja = [positiveJa, common.negativeJa].filter(Boolean).join('\n\n');
+  const en = [positiveEn, common.negativeEn].filter(Boolean).join('\n\n');
+  return { positiveJa, positiveEn, negativeJa: common.negativeJa, negativeEn: common.negativeEn,
+    ja, en, both: `【日本語】\n${ja}\n\n【English】\n${en}`, short: compactGroup('short'), tags: compactGroup('tags') };
 }
 
 const aspectParameter = (aspectRatio: string) => ({

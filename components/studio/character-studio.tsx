@@ -107,6 +107,8 @@ import { analyzePromptNotices, formatProfileOutput } from '@/lib/prompt-engine';
 import { buildPromptBlocks, generateStudioPrompts as generatePrompts } from '@/lib/prompt-blocks';
 import { findStylePreset } from '@/lib/style-pack';
 import { isSceneComposition } from '@/data/camera-expansion';
+import { CharacterCastPanel } from './character-cast-panel';
+import { castRandomLocks, isCastActive, syncCast } from '@/lib/character-cast';
 import type { StylePackSelection } from '@/lib/style-pack-types';
 import { applyPurposeRecommendation } from '@/lib/purpose-engine';
 import {
@@ -123,7 +125,7 @@ import {
 import { createEmptyNoteWorkspace } from '@/lib/inference/note-workspace';
 import { useStudioAutosave } from '@/hooks/use-studio-autosave';
 import { exportStudioBackup, parseStudioBackup, parseAnyStudioImport, WORKSPACE_KEY, RECOVERY_KEY, MAX_BACKUP_BYTES, type StudioWorkspace, type StudioImport } from '@/lib/studio-backup';
-import { createShareUrl, prepareShareSnapshot, readShareUrl, MAX_SHARE_URL_LENGTH } from '@/lib/share-snapshot';
+import { createShareUrl, prepareShareSnapshot, readShareUrl, shareCustomEntries, MAX_SHARE_URL_LENGTH } from '@/lib/share-snapshot';
 import {
   commitEditorTimeline,
   createEditorTimeline,
@@ -259,6 +261,11 @@ const outputTabs: Array<{ value: StudioOutputMode; labelJa: string; labelEn: str
 ];
 
 const releaseNotes = [
+  {
+    date: '2026-09-19', titleJa: '複数人数モード（2〜6人）', titleEn: 'Multiple-person mode (2–6 people)',
+    itemsJa: ['人物ごとに外見・衣装・表情・ロックを編集し、配置・関係性・全員の動作を指定できます。', '画風・背景は共通。1人モードへ戻しても他の人物を保持し、保存・共有・履歴も全員分に対応しました。', 'おまかせは選択中の人物に反映。「人物は1人だけ」は複数人出力から除外し、識別名や自由入力は共有前に選べます。'],
+    itemsEn: ['Edit appearances, outfits, expressions, and locks separately, with placement, relationships, and group actions.', 'Style and scene are shared. Other people are retained in single-person mode, and saves, sharing, and history support the whole group.', 'Randomize targets the selected person. Single-person constraints are omitted from group output; labels and custom text require opt-in when sharing.'],
+  },
   {
     date: '2026-09-18',
     titleJa: 'カメラ角度30種・構図35種に拡張',
@@ -549,6 +556,8 @@ export function CharacterStudio() {
   const activeOutput = outputs[outputMode];
   const language = preferences.language;
   const tr = useCallback((ja: string, en: string) => language === 'ja' ? ja : en, [language]);
+  const activePersonNumber = isCastActive(draft) ? draft.cast!.members.findIndex((member) => member.id === draft.cast!.activeId) + 1 : 0;
+  const personStep = (step: number) => `STEP ${step}${activePersonNumber ? tr(` · 人物${activePersonNumber}`, ` · Person ${activePersonNumber}`) : ''}`;
   const lockCount = Object.values(locks).filter(Boolean).length;
   const activeGapLabel = draft.generatedGap
     ? draft.generatedGap.labelJa || '一部のギャップ要素（編集済み）'
@@ -691,7 +700,7 @@ export function CharacterStudio() {
     action: string,
     options: { coalesceKey?: string; historySource?: HistoryEntry['source']; announce?: string } = {},
   ) => {
-    const nextTimeline = commitEditorTimeline(timeline, next, {
+    const nextTimeline = commitEditorTimeline(timeline, syncCast(next), {
       action,
       coalesceKey: options.coalesceKey,
     });
@@ -842,7 +851,7 @@ export function CharacterStudio() {
 
   const runRandom = (selectedThemeId?: string) => {
     const randomHistory = randomHistoryItems.map((item) => item.snapshot.draft);
-    const next = randomizeAll(draft, locks, selectedThemeId, randomHistory, Math.random, backgroundOnly ? 'background' : 'character');
+    const next = randomizeAll(draft, castRandomLocks(draft, locks), selectedThemeId, randomHistory, Math.random, backgroundOnly ? 'background' : 'character');
     const theme = selectedThemeId ? themeById(selectedThemeId) : undefined;
     const label = theme
       ? tr(`テーマ「${theme.label}」でおまかせ`, `Randomized with “${theme.labelEn}”`)
@@ -861,7 +870,7 @@ export function CharacterStudio() {
 
   const runGap = () => {
     const randomHistory = randomHistoryItems.map((item) => item.snapshot.draft);
-    const result = generateGap(draft, locks, Math.random, randomHistory);
+    const result = generateGap(draft, castRandomLocks(draft, locks), Math.random, randomHistory);
     if (!result.changed) {
       toast.add({ title: tr('現在のロックではギャップを作れません', 'A contrast cannot be created with the current locks'), description: tr('衣装・印象・表情など、2項目以上のロックを外してください', 'Unlock at least two fields such as outfit, traits, or expression'), type: 'warning' });
       return;
@@ -907,7 +916,7 @@ export function CharacterStudio() {
     }
 
     const mergeFields = Object.keys(draft)
-      .filter((field) => field !== 'custom' && field !== 'generatedGap' && field !== 'stylePack') as LockKey[];
+      .filter((field) => field !== 'custom' && field !== 'generatedGap' && field !== 'stylePack' && field !== 'cast') as LockKey[];
     const changedValueFields = new Set(mergeFields.filter((field) =>
       JSON.stringify(draft[field]) !== JSON.stringify(dryRun.snapshot.draft[field]),
     ));
@@ -1347,7 +1356,7 @@ export function CharacterStudio() {
   };
 
   const createBatch = () => {
-    const items = generateBatchVariations(draft, locks, {
+    const items = generateBatchVariations(draft, castRandomLocks(draft, locks), {
       count: 4,
       themeId: themeId || undefined,
       history: randomHistoryItems.map((item) => item.snapshot.draft),
@@ -1640,6 +1649,7 @@ export function CharacterStudio() {
                   </button>
                 </div>
               )}
+              <CharacterCastPanel snapshot={{ draft, locks }} language={language} onChange={(next, action, coalesceKey) => commitSnapshot(next, action, { coalesceKey })} />
               {!preferences.guidedMode && (
                 <div id="editor-panel-note" role="tabpanel" aria-labelledby="editor-tab-note" hidden={editorMode !== 'note'}>
                   <CharacterNoteInferencePanel
@@ -1828,7 +1838,7 @@ export function CharacterStudio() {
                   </div>}
                 </StudioSection>
 
-                <StudioSection hidden={!displayedSectionIds.includes('character')} value="character" icon={<UserRound />} eyebrow="STEP 3" title={tr('キャラクターの基本', 'Character basics')} summary={tr(`${labelFor('ageGroup', draft.ageGroup)}・${labelFor('gender', draft.gender)}・${labelFor('build', draft.build)}`, `${englishFor('ageGroup', draft.ageGroup)} · ${englishFor('gender', draft.gender)} · ${englishFor('build', draft.build)}`)}>
+                <StudioSection hidden={!displayedSectionIds.includes('character')} value="character" icon={<UserRound />} eyebrow={personStep(3)} title={tr('キャラクターの基本', 'Character basics')} summary={tr(`${labelFor('ageGroup', draft.ageGroup)}・${labelFor('gender', draft.gender)}・${labelFor('build', draft.build)}`, `${englishFor('ageGroup', draft.ageGroup)} · ${englishFor('gender', draft.gender)} · ${englishFor('build', draft.build)}`)}>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <FormRow label={tr('性別・表現', 'Gender / presentation')} actions={fieldActions('gender', tr('性別', 'Gender'))}><SingleSelect language={language} label={tr('性別・表現', 'Gender / presentation')} value={draft.gender} options={genders} onChange={(value) => updateField('gender', value)} /></FormRow>
                     <FormRow label={tr('年齢層', 'Age group')} actions={fieldActions('ageGroup', tr('年齢層', 'Age group'))}><SingleSelect language={language} label={tr('年齢層', 'Age group')} value={draft.ageGroup} options={ageGroups} onChange={(value) => updateField('ageGroup', value)} /></FormRow>
@@ -1847,7 +1857,7 @@ export function CharacterStudio() {
                   <div className="mt-3">{customField(tr('キャラクターの自由設定', 'Custom character direction'), 'character', tr('例：笑うと年下に見える、雨の日は少し寂しげ', 'e.g. looks younger when smiling; wistful on rainy days'))}</div>
                 </StudioSection>
 
-                <StudioSection hidden={!displayedSectionIds.includes('appearance')} value="appearance" icon={<Scissors />} eyebrow="STEP 4" title={tr('顔・髪・瞳', 'Face, hair, and eyes')} summary={`${draft.hairColors.map((id) => language === 'ja' ? labelFor('hairColors', id) : englishFor('hairColors', id)).join(' × ')} · ${language === 'ja' ? labelFor('hairstyle', draft.hairstyle) : englishFor('hairstyle', draft.hairstyle)}`}>
+                <StudioSection hidden={!displayedSectionIds.includes('appearance')} value="appearance" icon={<Scissors />} eyebrow={personStep(4)} title={tr('顔・髪・瞳', 'Face, hair, and eyes')} summary={`${draft.hairColors.map((id) => language === 'ja' ? labelFor('hairColors', id) : englishFor('hairColors', id)).join(' × ')} · ${language === 'ja' ? labelFor('hairstyle', draft.hairstyle) : englishFor('hairstyle', draft.hairstyle)}`}>
                   <div className="space-y-3">
                     <FormRow label={tr('髪色', 'Hair color')} hint={tr('1色なら全体色、複数なら主色＋差し色として解釈します', 'One color sets the base; additional colors act as accents')} actions={fieldActions('hairColors', tr('髪色', 'Hair color'))}><ChoiceChips {...catalogProps('hairColors')} label={tr('髪色', 'Hair color')} options={hairColors} selected={draft.hairColors} onChange={(value) => updateField('hairColors', value)} limit={12} /></FormRow>
                     <FormRow label={tr('髪の配色効果', 'Hair color effects')} hint={tr('例：グラデーションは根元から毛先へ色を変えます', 'Example: a gradient changes color from roots to tips')} actions={fieldActions('hairEffects', tr('髪の配色効果', 'Hair effects'))}><ChoiceChips {...catalogProps('hairEffects')} label={tr('髪の配色効果', 'Hair color effects')} options={hairEffects} selected={draft.hairEffects} onChange={(value) => updateField('hairEffects', value)} limit={8} searchable={false} /></FormRow>
@@ -1862,7 +1872,7 @@ export function CharacterStudio() {
                   <div className="mt-3">{customField(tr('顔・髪・瞳の自由設定', 'Custom appearance direction'), 'appearance', tr('例：左目の下に涙ぼくろ、毛先は透ける', 'e.g. beauty mark under left eye; translucent hair tips'))}</div>
                 </StudioSection>
 
-                <StudioSection hidden={!displayedSectionIds.includes('outfit')} value="outfit" icon={<Shirt />} eyebrow="STEP 5" title={tr('衣装とアクセサリー', 'Outfit and accessories')} summary={`${language === 'ja' ? labelFor('outfit', draft.outfit) : englishFor('outfit', draft.outfit)} · ${draft.outfitColors.map((id) => language === 'ja' ? labelFor('outfitColors', id) : englishFor('outfitColors', id)).join(' × ')}`}>
+                <StudioSection hidden={!displayedSectionIds.includes('outfit')} value="outfit" icon={<Shirt />} eyebrow={personStep(5)} title={tr('衣装とアクセサリー', 'Outfit and accessories')} summary={`${language === 'ja' ? labelFor('outfit', draft.outfit) : englishFor('outfit', draft.outfit)} · ${draft.outfitColors.map((id) => language === 'ja' ? labelFor('outfitColors', id) : englishFor('outfitColors', id)).join(' × ')}`}>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <FormRow label={tr('衣装カテゴリ', 'Outfit category')} actions={fieldActions('outfit', tr('衣装', 'Outfit'))}><SingleSelect {...catalogProps('outfit')} label={tr('衣装カテゴリ', 'Outfit category')} value={draft.outfit} options={outfits} onChange={(value) => updateField('outfit', value)} /></FormRow>
                     <FormRow label={tr('メイン・サブカラー', 'Main / accent colors')} actions={fieldActions('outfitColors', tr('衣装の色', 'Outfit colors'))}><ChoiceChips {...catalogProps('outfitColors')} label={tr('メイン・サブカラー', 'Main / accent colors')} options={outfitColors} selected={draft.outfitColors} onChange={(value) => updateField('outfitColors', value)} limit={10} /></FormRow>
@@ -1876,7 +1886,7 @@ export function CharacterStudio() {
                   <div className="mt-3">{customField(tr('衣装の自由設定', 'Custom outfit direction'), 'outfit', tr('例：七分袖、古びた銀の懐中時計', 'e.g. three-quarter sleeves; aged silver pocket watch'))}</div>
                 </StudioSection>
 
-                <StudioSection hidden={!displayedSectionIds.includes('action')} value="action" icon={<Smile />} eyebrow="STEP 6" title={tr('表情・ポーズ・視線', 'Expression, pose, and gaze')} summary={tr(`${labelFor('expression', draft.expression)}・${labelFor('pose', draft.pose)}・${labelFor('gaze', draft.gaze)}`, `${englishFor('expression', draft.expression)} · ${englishFor('pose', draft.pose)} · ${englishFor('gaze', draft.gaze)}`)}>
+                <StudioSection hidden={!displayedSectionIds.includes('action')} value="action" icon={<Smile />} eyebrow={personStep(6)} title={tr('表情・ポーズ・視線', 'Expression, pose, and gaze')} summary={tr(`${labelFor('expression', draft.expression)}・${labelFor('pose', draft.pose)}・${labelFor('gaze', draft.gaze)}`, `${englishFor('expression', draft.expression)} · ${englishFor('pose', draft.pose)} · ${englishFor('gaze', draft.gaze)}`)}>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <FormRow label={tr('表情', 'Expression')} actions={fieldActions('expression', tr('表情', 'Expression'))}><SingleSelect {...catalogProps('expression')} label={tr('表情', 'Expression')} value={draft.expression} options={expressions} onChange={(value) => updateField('expression', value)} /></FormRow>
                     <FormRow label={tr('ポーズ', 'Pose')} actions={fieldActions('pose', tr('ポーズ', 'Pose'))}><SingleSelect {...catalogProps('pose')} label={tr('ポーズ', 'Pose')} value={draft.pose} options={poses} onChange={(value) => updateField('pose', value)} /></FormRow>
@@ -2275,6 +2285,10 @@ export function CharacterStudio() {
               <ol className="grid gap-3 sm:grid-cols-2">
                 {[
                   {
+                    title: tr('複数人の絵を作る', 'Build a group illustration'),
+                    body: tr('「人数モード」で2〜6人に切り替え、人物ボタンで編集対象を選びます。外見・衣装・表情は個別、背景・画風は共通です。1人に戻しても他の人物は残ります。人数・配置の再現性は画像生成サービスにより異なります。', 'Switch to 2–6 people and select a person to edit. Appearance, outfit, and expression are individual; style and scene are shared. Other people are kept when switching to one person. Image generators may interpret counts and placement differently.'),
+                  },
+                  {
                     title: tr('設定メモから始める', 'Start from a character note'),
                     body: tr('「設定メモから作る」で自由文を端末内解析し、明示・推測・提案の候補を確認してからフォームへ反映できます。', 'Use Build from a note to analyze free text on this device, review explicit, inferred, and suggested candidates, then apply them to the form.'),
                   },
@@ -2371,10 +2385,10 @@ export function CharacterStudio() {
             <p className="rounded-xl bg-muted p-3 text-sm">{tr('選択した項目を共有します。メモ下書き・履歴・プリセット・ロック・ギャップの変更履歴は含めません。自由入力は初期状態では除外します。', 'Selected settings are shared. Note drafts, history, presets, locks, and contrast provenance are excluded. Custom text is excluded by default.')}</p>
             <fieldset className="space-y-2 rounded-xl border border-border p-3">
               <legend className="px-1 font-semibold">{tr('共有に含める自由入力', 'Custom text to include')}</legend>
-              {Object.entries(shareSource?.draft.custom ?? {}).filter(([, value]) => value.trim()).length === 0 && <p className="text-sm text-muted-foreground">{tr('自由入力はありません。', 'No custom text.')}</p>}
-              {Object.entries(shareSource?.draft.custom ?? {}).filter(([, value]) => value.trim()).map(([key, value]) => <label key={key} className="flex min-h-11 cursor-pointer items-start gap-3 rounded-lg p-2 hover:bg-muted">
+              {(!shareSource || shareCustomEntries(shareSource).length === 0) && <p className="text-sm text-muted-foreground">{tr('自由入力はありません。', 'No custom text.')}</p>}
+              {(shareSource ? shareCustomEntries(shareSource) : []).map(({ key, label, value }) => <label key={key} className="flex min-h-11 cursor-pointer items-start gap-3 rounded-lg p-2 hover:bg-muted">
                 <Checkbox className="mt-1" checked={shareCustomKeys.includes(key)} onCheckedChange={(checked) => setShareCustomKeys((current) => checked ? [...current, key] : current.filter((item) => item !== key))} />
-                <span className="min-w-0 text-sm"><span className="block font-semibold">{({ purpose: tr('用途', 'Purpose'), style: tr('絵柄', 'Style'), character: tr('人物', 'Character'), appearance: tr('顔・髪', 'Appearance'), outfit: tr('衣装', 'Outfit'), action: tr('表情・ポーズ', 'Pose'), scene: tr('背景・光', 'Scene'), negatives: tr('禁止事項', 'Exclusions') } as Record<string, string>)[key] ?? key}</span><span className="block whitespace-pre-wrap break-words text-muted-foreground">{value}</span></span>
+                <span className="min-w-0 text-sm"><span className="block font-semibold">{({ purpose: tr('用途', 'Purpose'), style: tr('絵柄', 'Style'), character: tr('人物', 'Character'), appearance: tr('顔・髪', 'Appearance'), outfit: tr('衣装', 'Outfit'), action: tr('表情・ポーズ', 'Pose'), scene: tr('背景・光', 'Scene'), negatives: tr('禁止事項', 'Exclusions') } as Record<string, string>)[key] ?? label}</span><span className="block whitespace-pre-wrap break-words text-muted-foreground">{value}</span></span>
               </label>)}
             </fieldset>
             {sharedSnapshot && <>

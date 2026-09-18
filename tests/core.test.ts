@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import './safety-checks';
 import './style-pack-checks';
 import './camera-checks';
+import './cast-checks';
 import {
   accessories,
   backgrounds,

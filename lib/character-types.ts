@@ -74,6 +74,26 @@ export type CharacterDraft = CharacterFields & {
   custom: Record<string, string>;
   generatedGap?: GeneratedGapState;
   stylePack?: StylePackSelection;
+  cast?: CharacterCast;
+};
+
+export type CastMember = {
+  id: string;
+  name: string;
+  position: string;
+  // Only person-specific fields are stored here; scene and style remain shared.
+  fields: Partial<CharacterFields>;
+  custom: Record<string, string>;
+  generatedGap?: GeneratedGapState;
+  locks: Partial<Record<LockKey, boolean>>;
+};
+
+export type CharacterCast = {
+  enabled: boolean;
+  activeId: string;
+  members: CastMember[];
+  relationship: string;
+  interaction: string;
 };
 
 export type CharacterSnapshot = {

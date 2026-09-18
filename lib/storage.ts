@@ -1,6 +1,7 @@
 import { defaultDraft } from '@/data/presets';
 import { normalizeAgeInput } from './age-utils';
 import { normalizeStylePack } from './style-pack';
+import { hydrateCast, syncCast } from './character-cast';
 import { isGuidedSectionId } from './guided-builder';
 import type {
   CharacterDraft,
@@ -138,6 +139,8 @@ export function hydrateDraft(value: unknown): CharacterDraft {
   delete hydrated.custom.gap;
   delete hydrated.custom.gapEn;
   hydrated.ageNumber = normalizeAgeInput(hydrated.ageNumber);
+  const cast = hydrateCast(source.cast, hydrateDraft);
+  if (cast) hydrated.cast = cast;
   return hydrated;
 }
 
@@ -151,7 +154,7 @@ export function migrateSnapshot(value: unknown): CharacterSnapshot | null {
       }
     }
   }
-  return { draft: hydrateDraft(value.draft), locks };
+  return syncCast({ draft: hydrateDraft(value.draft), locks });
 }
 
 export function parseSnapshot(raw: string | null): CharacterSnapshot | null {
