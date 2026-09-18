@@ -233,9 +233,9 @@ export function parseStudioPreferences(raw: string | null): StudioPreferences {
   try {
     const value: unknown = JSON.parse(raw);
     if (!isRecord(value)) return { ...DEFAULT_STUDIO_PREFERENCES, favoriteChoices: {}, recentChoices: {} };
-    const cleanChoiceMap = (candidate: unknown) => isRecord(candidate)
+    const cleanChoiceMap = (candidate: unknown, limit = Number.POSITIVE_INFINITY) => isRecord(candidate)
       ? Object.fromEntries(Object.entries(candidate).flatMap(([field, ids]) =>
-        Array.isArray(ids) ? [[field, cleanStringArray(ids).slice(0, 30)]] : []))
+        Array.isArray(ids) ? [[field, cleanStringArray(ids).slice(0, limit)]] : []))
       : {};
     return {
       language: value.language === 'en' ? 'en' : 'ja',
@@ -248,7 +248,7 @@ export function parseStudioPreferences(raw: string | null): StudioPreferences {
       exportProfile: ['generic', 'stable-diffusion', 'midjourney', 'novelai', 'human-brief'].includes(String(value.exportProfile))
         ? value.exportProfile as StudioPreferences['exportProfile'] : 'generic',
       favoriteChoices: cleanChoiceMap(value.favoriteChoices),
-      recentChoices: cleanChoiceMap(value.recentChoices),
+      recentChoices: cleanChoiceMap(value.recentChoices, 30),
     };
   } catch {
     return { ...DEFAULT_STUDIO_PREFERENCES, favoriteChoices: {}, recentChoices: {} };
