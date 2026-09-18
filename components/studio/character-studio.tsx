@@ -470,7 +470,7 @@ function StudioSection({
     <AccordionItem
       id={value}
       value={value}
-      className="mb-4 scroll-mt-24 overflow-hidden rounded-[22px] border border-border bg-card shadow-[0_10px_32px_rgba(90,48,74,0.045)]"
+      className="mb-4 scroll-mt-[calc(var(--studio-header-height,72px)+var(--studio-person-toolbar-height,0px)+1rem)] overflow-hidden rounded-[22px] border border-border bg-card shadow-[0_10px_32px_rgba(90,48,74,0.045)]"
     >
       <AccordionTrigger className="px-4 py-4 hover:no-underline sm:px-5">
         <span className="flex min-w-0 items-center gap-3">
@@ -1512,6 +1512,17 @@ export function CharacterStudio() {
   }, []);
 
   useEffect(() => {
+    const toolbar = document.getElementById('active-person-toolbar');
+    if (!toolbar) {
+      document.documentElement.style.setProperty('--studio-person-toolbar-height', '0px');
+      return;
+    }
+    const observer = new ResizeObserver(() => document.documentElement.style.setProperty('--studio-person-toolbar-height', `${toolbar.getBoundingClientRect().height}px`));
+    observer.observe(toolbar);
+    return () => observer.disconnect();
+  }, [activePersonNumber]);
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       const editable = Boolean(target?.closest('input, textarea, select, [contenteditable="true"]'));
@@ -1725,7 +1736,7 @@ export function CharacterStudio() {
               )}
               <CharacterCastPanel snapshot={{ draft, locks }} language={language} onChange={(next, action, coalesceKey) => commitSnapshot(next, action, { coalesceKey })} />
               {!preferences.guidedMode && <Button variant="outline" className="mb-4 min-h-11 w-full" onClick={() => setQuickStartOpen(true)}>{tr('3項目で始める：用途・人数・画風', 'Quick start: purpose, people, style')}</Button>}
-              {activePersonNumber > 0 && <div className="sticky top-[var(--studio-header-height,72px)] z-20 mb-4 rounded-xl border border-primary/30 bg-card/95 p-3 shadow-sm backdrop-blur">
+              {activePersonNumber > 0 && <div id="active-person-toolbar" className="sticky top-[var(--studio-header-height,72px)] z-20 mb-4 rounded-xl border border-primary/30 bg-card/95 p-3 shadow-sm backdrop-blur">
                 <label className="flex flex-wrap items-center gap-2 text-sm font-bold">{tr('編集中', 'Editing')}
                   <Select value={draft.cast!.activeId} onValueChange={(id) => { if (id) { const next = selectCastMember(makeSnapshot(), id); commitSnapshot(next, tr('編集する人物を切替', 'Changed person to edit'), { announce: `${tr('編集中', 'Editing')}: ${personName(next, language)}` }); } }}>
                     <SelectTrigger aria-label={tr('編集中の人物を切り替え', 'Switch the person being edited')} className="min-h-11 min-w-0 flex-1"><SelectValue>{activePersonLabel}</SelectValue></SelectTrigger>
