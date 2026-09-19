@@ -44,7 +44,7 @@ export function FieldActions({
         onClick={onToggleLock}
         aria-label={language === 'ja' ? `${label}を${locked ? 'ロック解除' : 'ロック'}` : `${locked ? 'Unlock' : 'Lock'} ${label}`}
         aria-pressed={locked}
-        className={locked ? 'bg-primary/10 text-primary' : 'text-muted-foreground'}
+        className={`size-11 ${locked ? 'bg-primary/10 text-primary' : 'text-muted-foreground'}`}
       >
         {locked ? <Lock className="size-3.5" /> : <Unlock className="size-3.5" />}
       </Button>
@@ -55,7 +55,7 @@ export function FieldActions({
         onClick={onRandom}
         disabled={locked}
         aria-label={language === 'ja' ? `${label}だけランダムに変える` : `Randomize only ${label}`}
-        className="text-muted-foreground hover:text-primary"
+        className="size-11 text-muted-foreground hover:text-primary"
       >
         <Dices className="size-3.5" />
       </Button>}
@@ -78,9 +78,9 @@ export function FormRow({
 }) {
   const labelId = useId();
   return (
-    <fieldset aria-labelledby={labelId} className={`m-0 min-w-0 rounded-2xl border border-border/80 bg-background/55 p-4 ${className}`}>
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div>
+    <fieldset aria-labelledby={labelId} className={`m-0 min-w-0 border-0 border-t border-border py-3 ${className}`}>
+      <div className="mb-2 flex min-h-11 items-center justify-between gap-2">
+        <div className="min-w-0">
           <p id={labelId} className="text-sm font-bold">{label}</p>
           {hint && <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{hint}</p>}
         </div>
@@ -150,13 +150,13 @@ export function SingleSelect({
       <div>
         <div className="mb-2 flex flex-wrap items-center gap-2">
           {(['all', 'favorites', 'recent'] as const).map((item) => (
-            <Button key={item} type="button" variant={view === item ? 'secondary' : 'ghost'} size="sm" className="min-h-11 rounded-xl px-3 text-sm" aria-pressed={view === item} onClick={() => setView(item)}>
+            <Button key={item} type="button" variant={view === item ? 'secondary' : 'ghost'} size="sm" className="min-h-11 rounded-lg px-3 text-sm" aria-pressed={view === item} onClick={() => setView(item)}>
               {{ all: language === 'ja' ? 'すべて' : 'All', favorites: language === 'ja' ? 'お気に入り' : 'Favorites', recent: language === 'ja' ? '最近' : 'Recent' }[item]}
             </Button>
           ))}
           {categories.length > 0 && (
             <Select value={categoryId || 'all'} onValueChange={(next) => setCategoryId(next === 'all' ? '' : String(next))}>
-              <SelectTrigger aria-label={language === 'ja' ? `${label}のカテゴリ` : `${label} category`} className="h-11 w-full rounded-xl bg-card sm:w-44">
+              <SelectTrigger aria-label={language === 'ja' ? `${label}のカテゴリ` : `${label} category`} className="h-11 w-full rounded-lg bg-card sm:w-44">
                 <SelectValue>{selectedCategory ? choiceCategoryLabel(selectedCategory, language) : language === 'ja' ? '全カテゴリ' : 'All categories'}</SelectValue>
               </SelectTrigger>
               <SelectContent>
@@ -183,7 +183,7 @@ export function SingleSelect({
               aria-label={label}
               triggerAriaLabel={language === 'ja' ? `${label}の候補を開く` : `Open ${label} options`}
               placeholder={placeholder}
-              className="h-11 w-full rounded-xl bg-card"
+              className="h-11 w-full rounded-lg bg-card"
             />
             <ComboboxContent className="w-[min(22rem,calc(100vw-2rem))] min-w-0">
               <ComboboxEmpty>{language === 'ja' ? '一致する候補がありません' : 'No matching options'}</ComboboxEmpty>
@@ -208,7 +208,7 @@ export function SingleSelect({
   }
   return (
     <Select value={value || null} onValueChange={(next) => next && selectValue(String(next))}>
-      <SelectTrigger aria-label={label} className="h-11 w-full rounded-xl bg-card px-3">
+      <SelectTrigger aria-label={label} className="h-11 w-full rounded-lg bg-card px-3">
         <SelectValue placeholder={placeholder}>{selectedOption ? (language === 'ja' ? selectedOption.labelJa : selectedOption.labelEn) : placeholder}</SelectValue>
       </SelectTrigger>
       <SelectContent align="start" className="max-h-72">
@@ -294,7 +294,7 @@ export function ChoiceChips({
               size="sm"
               aria-pressed={view === item}
               onClick={() => setView(item)}
-              className="min-h-11 rounded-xl px-3 text-sm"
+              className="min-h-11 rounded-lg px-3 text-sm"
             >
               {{
                 all: language === 'ja' ? 'すべて' : 'All',
@@ -305,7 +305,7 @@ export function ChoiceChips({
             </Button>
           ))}
           {selected.length > 0 && (
-            <Button type="button" variant="ghost" size="sm" onClick={() => onChange([])} className="min-h-11 gap-1 rounded-xl text-sm text-destructive">
+            <Button type="button" variant="ghost" size="sm" onClick={() => onChange([])} className="min-h-11 gap-1 rounded-lg text-sm text-destructive">
               <X className="size-4" />{language === 'ja' ? '選択をクリア' : 'Clear selected'}
             </Button>
           )}
@@ -313,7 +313,7 @@ export function ChoiceChips({
       )}
       {categories.length > 0 && options.length > 18 && (
         <Select value={categoryId || 'all'} onValueChange={(value) => setCategoryId(value === 'all' ? '' : String(value))}>
-          <SelectTrigger aria-label={language === 'ja' ? `${label}のカテゴリ` : `${label} category`} className="mb-3 h-11 w-full rounded-xl bg-card px-3 sm:w-56">
+          <SelectTrigger aria-label={language === 'ja' ? `${label}のカテゴリ` : `${label} category`} className="mb-3 h-11 w-full rounded-lg bg-card px-3 sm:w-56">
             <SelectValue>{selectedCategory ? choiceCategoryLabel(selectedCategory, language) : language === 'ja' ? 'すべてのカテゴリ' : 'All categories'}</SelectValue>
           </SelectTrigger>
           <SelectContent>
@@ -330,7 +330,7 @@ export function ChoiceChips({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder={language === 'ja' ? '選択肢を検索' : 'Search options'}
-            className="h-11 rounded-xl bg-card pl-9"
+            className="h-11 rounded-lg bg-card pl-9"
           />
         </div>
       )}
@@ -339,14 +339,14 @@ export function ChoiceChips({
           const active = selected.includes(option.id);
           const favorite = favorites.includes(option.id);
           return (
-            <span key={option.id} className="inline-flex overflow-hidden rounded-full border border-border bg-card">
+            <span key={option.id} className="inline-flex max-w-full overflow-hidden rounded-md border border-border bg-card">
               <Button
                 type="button"
                 variant={active ? 'default' : 'ghost'}
                 size="sm"
                 aria-pressed={active}
                 onClick={() => toggle(option.id)}
-                className={`min-h-11 rounded-none border-0 px-3 text-sm ${active ? 'shadow-sm' : 'hover:bg-accent'}`}
+                className="h-auto min-h-11 min-w-0 shrink whitespace-normal break-words rounded-none border-0 px-3 py-2 text-sm hover:bg-accent aria-pressed:hover:bg-primary"
               >
                 {active && <Check className="mr-1 size-4" />}{language === 'ja' ? option.labelJa : option.labelEn}
               </Button>
@@ -378,7 +378,7 @@ export function ChoiceChips({
           {expanded ? (language === 'ja' ? '折りたたむ' : 'Show less') : (language === 'ja' ? `すべて表示（${filtered.length}）` : `Show all (${filtered.length})`)}
         </Button>
       )}
-      {filtered.length === 0 && <p className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">{language === 'ja' ? '条件に合う候補がありません。' : 'No options match these filters.'}</p>}
+      {filtered.length === 0 && <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">{language === 'ja' ? '条件に合う候補がありません。' : 'No options match these filters.'}</p>}
     </div>
   );
 }

@@ -265,7 +265,7 @@ export function CharacterNoteInferencePanel({
 
   return (
     <div className="space-y-4">
-      <section className="overflow-hidden rounded-[22px] border border-primary/20 bg-card shadow-[0_12px_34px_rgba(78,42,68,0.06)]">
+      <section className="overflow-hidden rounded-lg border border-primary/20 bg-card shadow-none">
         <div className="border-b border-border bg-primary/[0.045] p-4 sm:p-5">
           <p className="flex items-center gap-2 text-sm font-bold text-primary"><FileSearch className="size-4" />{tr('設定メモを読み取る', 'Read a character note')}</p>
           <p className="mt-2 text-base font-bold">{tr('反映先：', 'Apply to: ')}{targetLabel ?? tr('現在の人物', 'Current person')}</p>
@@ -283,7 +283,7 @@ export function CharacterNoteInferencePanel({
               value={note}
               onChange={(event) => updateNote(event.target.value)}
               placeholder={tr('例：30代くらいの男。疲れている教師。眼鏡。髪は黒くて少し長い。', 'Japanese example: 30代くらいの男。疲れている教師。眼鏡。髪は黒くて少し長い。')}
-              className="min-h-36 resize-y rounded-2xl bg-background text-base leading-7"
+              className="min-h-36 resize-y rounded-lg bg-background text-base leading-7"
               maxLength={5000}
             />
           </div>
@@ -296,7 +296,7 @@ export function CharacterNoteInferencePanel({
               className="mt-2 grid gap-2 sm:grid-cols-3"
             >
               {levelOptions.map((option) => (
-                <label htmlFor={`inference-level-${option.id}`} key={option.id} className={`flex min-h-20 cursor-pointer items-start gap-3 rounded-2xl border p-3.5 transition ${level === option.id ? 'border-primary bg-primary/[0.055]' : 'border-border bg-background hover:border-primary/35'}`}>
+                <label htmlFor={`inference-level-${option.id}`} key={option.id} className={`flex min-h-20 cursor-pointer items-start gap-3 rounded-lg border p-3.5 transition ${level === option.id ? 'border-primary bg-primary/[0.055]' : 'border-border bg-background hover:border-primary/35'}`}>
                   <RadioGroupItem id={`inference-level-${option.id}`} value={option.id} aria-labelledby={`inference-level-${option.id}-label`} aria-describedby={`inference-level-${option.id}-hint`} className="mt-0.5" />
                   <span><span id={`inference-level-${option.id}-label`} className="block text-sm font-bold">{language === 'ja' ? option.labelJa : option.labelEn}</span><span id={`inference-level-${option.id}-hint`} className="mt-1 block text-xs leading-relaxed text-muted-foreground">{language === 'ja' ? option.hintJa : option.hintEn}</span></span>
                 </label>
@@ -304,16 +304,16 @@ export function CharacterNoteInferencePanel({
             </RadioGroup>
           </fieldset>
 
-          <div className="flex flex-col gap-3 rounded-2xl border border-primary/15 bg-primary/[0.045] p-3.5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-3 rounded-lg border border-primary/15 bg-primary/[0.045] p-3.5 sm:flex-row sm:items-center sm:justify-between">
             <p className="flex items-start gap-2 text-sm text-muted-foreground"><ShieldCheck className="mt-0.5 size-4 shrink-0 text-primary" /><span>{tr('初期版は日本語の設定メモに対応しています。外部AIやサーバーへ送らず、この端末内の辞書とルールだけで解析します。', 'This initial version reads Japanese notes using only local dictionaries and rules. Nothing is sent to an external AI or server.')}</span></p>
-            <Button className="min-h-11 shrink-0 gap-2 rounded-xl" disabled={!note.trim() || analyzing} onClick={() => void analyze()}><Sparkles className="size-4" />{analyzing ? tr('読み取り中…', 'Reading…') : tr('設定を読み取る', 'Read settings')}</Button>
+            <Button className="min-h-11 shrink-0 gap-2 rounded-lg" disabled={!note.trim() || analyzing} onClick={() => void analyze()}><Sparkles className="size-4" />{analyzing ? tr('読み取り中…', 'Reading…') : tr('設定を読み取る', 'Read settings')}</Button>
           </div>
           {analysisError && <p role="alert" className="text-sm font-semibold text-destructive">{analysisError}</p>}
         </div>
       </section>
 
       {result && (
-        <section className="overflow-hidden rounded-[22px] border border-border bg-card shadow-[0_12px_34px_rgba(78,42,68,0.05)]">
+        <section className="overflow-hidden rounded-lg border border-border bg-card shadow-none">
           <div className="flex flex-col gap-3 border-b border-border bg-muted/25 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
             <div>
               <h2 ref={resultHeadingRef} tabIndex={-1} className="text-sm font-bold outline-none">{tr('推測結果', 'Inferred candidates')}</h2>
@@ -324,12 +324,12 @@ export function CharacterNoteInferencePanel({
                 )}
               </output>
             </div>
-            <Button variant="ghost" size="sm" className="min-h-11 gap-2 rounded-xl" onClick={resetResult}><RotateCcw className="size-4" />{tr('結果をクリア', 'Clear results')}</Button>
+            <Button variant="ghost" size="sm" className="min-h-11 gap-2 rounded-lg" onClick={resetResult}><RotateCcw className="size-4" />{tr('結果をクリア', 'Clear results')}</Button>
           </div>
 
           <div className="space-y-5 p-4 sm:p-5">
             {result.warnings.length > 0 && (
-              <div className="rounded-2xl border border-amber-500/25 bg-amber-500/8 p-3.5">
+              <div className="rounded-lg border border-amber-500/25 bg-amber-500/8 p-3.5">
                 <p className="flex items-center gap-2 text-sm font-bold text-amber-800 dark:text-amber-300"><Lightbulb className="size-4" />{tr('確認ポイント', 'Review notes')}</p>
                 <ul className="mt-2 space-y-1.5 text-sm text-muted-foreground">
                   {result.warnings.map((warning) => <li key={warning}>• {warningForDisplay(warning, language)}</li>)}
@@ -338,7 +338,7 @@ export function CharacterNoteInferencePanel({
             )}
 
             {groupedValues.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-border bg-muted/20 p-7 text-center">
+              <div className="rounded-lg border border-dashed border-border bg-muted/20 p-7 text-center">
                 <FileSearch className="mx-auto size-7 text-muted-foreground/50" />
                 <p className="mt-3 text-sm font-bold">{tr('候補を見つけられませんでした', 'No candidates found')}</p>
                 <p className="mt-1 text-sm text-muted-foreground">{tr('表現を少し具体的にするか、通常入力で設定してください。', 'Try more specific wording or use the regular form.')}</p>
@@ -365,7 +365,7 @@ export function CharacterNoteInferencePanel({
                         type="button"
                         variant={inferredLock ? 'secondary' : 'outline'}
                         size="sm"
-                        className="min-h-11 gap-2 rounded-xl"
+                        className="min-h-11 gap-2 rounded-lg"
                         aria-label={tr(`${categoryLabel}を反映後にロック`, `Lock ${categoryLabel} after applying`)}
                         aria-pressed={inferredLock}
                         disabled={!categoryHasAdopted}
@@ -397,7 +397,7 @@ export function CharacterNoteInferencePanel({
                       const checkboxId = `inference-adopt-${key.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
                       const checkboxLabelId = `${checkboxId}-label`;
                       return (
-                        <article key={key} className={`rounded-2xl border p-3.5 transition sm:p-4 ${decision.adopted ? 'border-primary/25 bg-primary/[0.035]' : 'border-border bg-muted/15 opacity-75'}`}>
+                        <article key={key} className={`rounded-lg border p-3.5 transition sm:p-4 ${decision.adopted ? 'border-primary/25 bg-primary/[0.035]' : 'border-border bg-muted/15 opacity-75'}`}>
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
                             <label htmlFor={checkboxId} className={`flex min-h-11 items-center gap-3 sm:min-w-36 ${categoryLocked ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                               <Checkbox
@@ -433,7 +433,7 @@ export function CharacterNoteInferencePanel({
                           </div>
                           <div className="mt-3 border-t border-border/70 pt-3">
                             {categoryLocked ? (
-                              <div aria-disabled="true" className="flex min-h-11 items-center rounded-xl border border-border bg-muted/35 px-3 text-sm text-muted-foreground">
+                              <div aria-disabled="true" className="flex min-h-11 items-center rounded-lg border border-border bg-muted/35 px-3 text-sm text-muted-foreground">
                                 {language === 'ja'
                                   ? options.find((option) => option.id === decision.valueId)?.labelJa ?? value.labelJa
                                   : options.find((option) => option.id === decision.valueId)?.labelEn ?? value.labelEn}
@@ -464,7 +464,7 @@ export function CharacterNoteInferencePanel({
                 <div>
                   <p id="inference-merge-label" className="mb-2 block text-sm font-bold">{tr('既存フォームへの反映方法', 'How to merge with the form')}</p>
                   <Select value={mergeMode} onValueChange={(value) => value && setMergeMode(value as InferenceMergeMode)}>
-                    <SelectTrigger aria-labelledby="inference-merge-label" className="h-11 w-full rounded-xl bg-card">
+                    <SelectTrigger aria-labelledby="inference-merge-label" className="h-11 w-full rounded-lg bg-card">
                       <SelectValue>{({
                         overwrite: tr('候補がある項目を上書き', 'Overwrite fields with candidates'),
                         append: tr('複数選択は追加・単一選択は空欄だけ', 'Append lists; fill empty single fields'),
@@ -478,7 +478,7 @@ export function CharacterNoteInferencePanel({
                     </SelectContent>
                   </Select>
                 </div>
-                <Button className="min-h-12 gap-2 rounded-xl px-5" disabled={applicableAdoptedCount === 0} onClick={() => onApply(result, decisions, mergeMode)}>
+                <Button className="min-h-12 gap-2 rounded-lg px-5" disabled={applicableAdoptedCount === 0} onClick={() => onApply(result, decisions, mergeMode)}>
                   <Check className="size-4 shrink-0" /><span className="whitespace-normal">{tr(`${targetLabel ?? '現在の人物'}へ${applicableAdoptedCount}件を反映`, `Apply ${applicableAdoptedCount} to ${targetLabel ?? 'current person'}`)}</span>
                 </Button>
               </div>

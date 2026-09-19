@@ -38,7 +38,6 @@ import {
   Trees,
   Upload,
   UserRound,
-  Wand2,
   X,
 } from 'lucide-react';
 import {
@@ -265,6 +264,11 @@ const outputTabs: Array<{ value: StudioOutputMode; labelJa: string; labelEn: str
 
 const releaseNotes = [
   {
+    date: '2026-09-19', titleJa: 'シンプルでフラットな編集画面', titleEn: 'A simpler, flatter workspace',
+    itemsJa: ['装飾とカードの入れ子を減らし、入力欄・人物切替・出力を見分けやすく整理しました。', '人数の詳細・画風ライブラリ・作成オプション・サービス別出力は、必要なときに開けます。機能や保存内容はそのままです。', '狭い画面でも更新履歴・ヘルプ・保存を文字で表示。長い入力のはみ出しと、未入力欄の見出し表示を改善しました。'],
+    itemsEn: ['Reduced decoration and nested cards, with clearer inputs, person switching, and output.', 'Expand cast details, the style library, creation options, and service formats when needed. Features and saved data are unchanged.', 'Kept named changelog, help, and save actions on small screens; improved long-text wrapping and empty section summaries.'],
+  },
+  {
     date: '2026-09-19', titleJa: '複数人編集の安全性と受け渡しを改善', titleEn: 'Safer group editing and handoffs',
     itemsJa: ['人物別・共通の設定メモ、反映先表示、表情とポーズの分離、範囲別リセットを追加。旧データとメモは引き継ぎます。', '人物一覧、複製、項目コピー、衣装テンプレート、選択人物の一括生成、関係の補足と英語識別名に対応。', 'コピー前の確認、人物別コピー、未変換文への移動、配置プリセット、必須・希望条件、変更メモ付き保存を追加。'],
     itemsEn: ['Added per-person/shared notes, explicit editing scope, separate expression/pose notes, and scoped resets. Existing data is retained.', 'Added cast comparison, duplication, field transfer, outfit templates, selected-person randomization, relationship notes, and English labels.', 'Added copy review, per-person copying, untranslated-text navigation, layout presets, required/preferred directions, and version notes.'],
@@ -470,20 +474,20 @@ function StudioSection({
     <AccordionItem
       id={value}
       value={value}
-      className="mb-4 scroll-mt-[calc(var(--studio-header-height,72px)+var(--studio-person-toolbar-height,0px)+1rem)] overflow-hidden rounded-[22px] border border-border bg-card shadow-[0_10px_32px_rgba(90,48,74,0.045)]"
+      className="mb-4 scroll-mt-[calc(var(--studio-header-height,72px)+var(--studio-person-toolbar-height,0px)+1rem)] overflow-hidden rounded-lg border border-border bg-card shadow-none"
     >
-      <AccordionTrigger className="px-4 py-4 hover:no-underline sm:px-5">
+      <AccordionTrigger className="min-w-0 w-full px-4 py-4 hover:no-underline sm:px-5">
         <span className="flex min-w-0 items-center gap-3">
-          <span className="grid size-10 shrink-0 place-items-center rounded-[14px] bg-primary/10 text-primary [&_svg]:size-4.5">
+          <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary [&_svg]:size-4.5">
             {icon}
           </span>
           <span className="min-w-0">
-            <span className="block text-xs font-bold tracking-[0.13em] text-muted-foreground">
+            <span title={eyebrow} className="block truncate text-xs font-bold tracking-[0.08em] text-muted-foreground">
               {eyebrow}
             </span>
             <span className="mt-0.5 block text-base font-bold">{title}</span>
             <span className="mt-0.5 block truncate text-sm font-normal text-muted-foreground">
-              {summary}
+              {summary.split(/[・·]/u).map((part) => part.trim()).filter(Boolean).join(' · ') || '—'}
             </span>
           </span>
         </span>
@@ -497,7 +501,7 @@ export function CharacterStudio() {
   const [timeline, setTimeline] = useState(() => createEditorTimeline({ draft: defaultDraft, locks: {} }));
   const draft = timeline.present.snapshot.draft;
   const locks = timeline.present.snapshot.locks;
-  const [openSections, setOpenSections] = useState<string[]>(['purpose', 'style', 'character']);
+  const [openSections, setOpenSections] = useState<string[]>(['purpose']);
   const [editorMode, setEditorMode] = useState<'form' | 'note'>('form');
   const [outputMode, setOutputMode] = useState<StudioOutputMode>('ja');
   const [themeId, setThemeId] = useState('');
@@ -1322,7 +1326,7 @@ export function CharacterStudio() {
       onChange={(event) => updateCustom(key, event.target.value)}
       onBlur={() => addHistory(tr(`${label}を編集`, `Edited ${label}`), makeSnapshot(), 'manual')}
       placeholder={placeholder}
-      className="h-11 rounded-xl bg-card"
+      className="h-11 rounded-lg bg-card"
     />
   );
 
@@ -1337,6 +1341,10 @@ export function CharacterStudio() {
     setOpenSections((current) => [...new Set([...current, section])]);
     window.setTimeout(() => {
       const target = document.getElementById(`custom-${key}`) ?? document.getElementById(`cast-${key}`) ?? document.getElementById(section);
+      // Reveal collapsed editors before navigating from an output warning.
+      for (let parent = target?.parentElement; parent; parent = parent.parentElement) {
+        if (parent instanceof HTMLDetailsElement) parent.open = true;
+      }
       target?.scrollIntoView({ block: 'center', behavior: 'auto' });
       target?.focus({ preventScroll: true });
     }, 100);
@@ -1568,24 +1576,24 @@ export function CharacterStudio() {
       <a href="#character-inputs" className="sr-only z-[100] rounded-lg bg-background p-3 focus:not-sr-only focus:fixed focus:left-3 focus:top-3">{tr('キャラクター設定へ移動', 'Skip to character settings')}</a>
       <a href="#prompt-preview" className="sr-only z-[100] rounded-lg bg-background p-3 focus:not-sr-only focus:fixed focus:left-52 focus:top-3">{tr('完成した指示書へ移動', 'Skip to finished brief')}</a>
       <output className="sr-only" aria-live="polite" aria-atomic="true">{announcement}</output>
-      <main className="min-h-screen bg-background text-foreground">
-        <header className="sticky top-0 z-40 border-b border-border/70 bg-background/92 backdrop-blur-xl">
-          <div className="mx-auto flex h-[72px] max-w-[1680px] items-center justify-between gap-3 px-3 sm:px-6">
+      <main className="min-h-screen bg-background text-foreground [overflow-wrap:anywhere]">
+        <header className="sticky top-0 z-40 border-b border-border bg-card">
+          <div className="mx-auto flex min-h-16 max-w-[1680px] flex-wrap items-center justify-between gap-2 px-3 py-2 sm:px-6">
             <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
-              <div className="grid size-10 shrink-0 place-items-center rounded-[14px] bg-primary text-primary-foreground shadow-[0_8px_22px_color-mix(in_oklab,var(--primary)_28%,transparent)]">
+              <div className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground">
                 <Sparkles className="size-5" />
               </div>
               <div className="min-w-0">
-                <h1 className="sr-only truncate text-base font-bold tracking-tight sm:not-sr-only sm:text-lg">{tr('キャラクター発注室', 'Character Brief Studio')}</h1>
+                <h1 className="text-base font-bold tracking-tight sm:text-lg">{tr('キャラクター発注室', 'Character Brief Studio')}</h1>
                 <p className="hidden text-xs font-bold tracking-[0.08em] text-muted-foreground sm:block">{tr('イラスト指示書メーカー', 'Illustration Prompt Builder')}</p>
               </div>
             </div>
-            <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+            <div className="flex w-full flex-wrap items-center justify-between gap-1 sm:w-auto sm:justify-end sm:gap-2">
               <Button
                 aria-label={tr('表示言語を切り替える', 'Switch display language')}
                 variant="ghost"
                 size="icon"
-                className="hidden min-h-11 min-w-11 rounded-xl sm:inline-flex"
+                className="hidden min-h-11 min-w-11 rounded-lg sm:inline-flex"
                 onClick={toggleLanguage}
               >
                 <Languages className="size-4" />
@@ -1594,7 +1602,7 @@ export function CharacterStudio() {
                 aria-label={tr('明るさを切り替える', 'Toggle color mode')}
                 variant="ghost"
                 size="icon"
-                className="hidden min-h-11 min-w-11 rounded-xl sm:inline-flex"
+                className="hidden min-h-11 min-w-11 rounded-lg sm:inline-flex"
                 onClick={toggleColorMode}
               >
                 {preferences.colorMode === 'dark' ? <Sun className="size-4" /> : <Moon className="size-4" />}
@@ -1603,30 +1611,30 @@ export function CharacterStudio() {
                 aria-label={tr('更新履歴を開く', 'Open changelog')}
                 variant="ghost"
                 size="sm"
-                className="min-h-11 min-w-11 gap-2 rounded-xl px-2.5 xl:px-3"
+                className="min-h-11 min-w-11 gap-2 rounded-lg px-2.5 xl:px-3"
                 title={tr('更新履歴', 'What’s new')}
                 onClick={() => setChangelogOpen(true)}
               >
-                <Megaphone className="size-4" />
-                <span className="hidden xl:inline">{tr('更新履歴', 'What’s new')}</span>
+                <Megaphone className="hidden size-4 sm:block" />
+                <span>{tr('更新履歴', 'What’s new')}</span>
               </Button>
               <Button
                 aria-label={tr('ヘルプを開く', 'Open help')}
                 aria-keyshortcuts="?"
                 variant="ghost"
                 size="sm"
-                className="min-h-11 min-w-11 gap-2 rounded-xl px-2.5 xl:px-3"
+                className="min-h-11 min-w-11 gap-2 rounded-lg px-2.5 xl:px-3"
                 title={tr('ヘルプとキーボードショートカット', 'Help and keyboard shortcuts')}
                 onClick={() => { setHelpTab('guide'); setHelpOpen(true); }}
               >
-                <CircleHelp className="size-4" />
-                <span className="hidden xl:inline">{tr('ヘルプ', 'Help')}</span>
+                <CircleHelp className="hidden size-4 sm:block" />
+                <span>{tr('ヘルプ', 'Help')}</span>
               </Button>
               <Button
                 aria-label={tr('履歴を開く', 'Open history')}
                 variant="ghost"
                 size="sm"
-                className="hidden min-h-11 min-w-11 gap-2 rounded-xl px-2.5 sm:inline-flex sm:px-3"
+                className="hidden min-h-11 min-w-11 gap-2 rounded-lg px-2.5 sm:inline-flex sm:px-3"
                 title={tr('編集履歴', 'Edit history')}
                 onClick={() => { setManagerTab('history'); setManagerOpen(true); }}
               >
@@ -1637,25 +1645,19 @@ export function CharacterStudio() {
                 aria-label={tr('プリセットを保存・読み込み', 'Save or load presets')}
                 variant="outline"
                 size="sm"
-                className="min-h-11 min-w-11 gap-2 rounded-xl bg-card px-2.5 sm:px-3"
+                className="min-h-11 min-w-11 gap-2 rounded-lg bg-card px-2.5 sm:px-3"
                 title={tr('プリセットを保存・読み込み', 'Save or load presets')}
                 onClick={() => { setManagerTab('presets'); setManagerOpen(true); }}
               >
-                <Bookmark className="size-4" />
-                <span className="hidden xl:inline">{tr('保存・読込', 'Save / Load')}</span>
+                <Bookmark className="hidden size-4 sm:block" />
+                <span>{tr('保存・読込', 'Save / Load')}</span>
               </Button>
-              {!preferences.guidedMode && editorMode === 'form' && (
-                <Button aria-label={tr(backgroundOnly ? '背景をおまかせ生成' : 'キャラクターをおまかせ生成', backgroundOnly ? 'Randomize background' : 'Randomize character')} aria-keyshortcuts="Control+Enter Meta+Enter" size="sm" className="min-h-11 min-w-11 gap-2 rounded-xl px-3" title={tr(backgroundOnly ? '背景をおまかせ生成' : 'キャラクターをおまかせ生成', backgroundOnly ? 'Randomize background' : 'Randomize character')} onClick={() => runRandom()}>
-                  <Dices className="size-4" />
-                  <span className="hidden xl:inline">{tr('おまかせ', 'Randomize')}</span>
-                </Button>
-              )}
             </div>
           </div>
         </header>
 
         <div className="mx-auto grid max-w-[1680px] grid-cols-1 xl:grid-cols-[220px_minmax(0,1fr)_410px]">
-          <aside className="sticky top-[72px] hidden h-[calc(100vh-72px)] overflow-y-auto border-r border-border/70 bg-card/35 px-3 py-6 xl:block">
+          <aside className="sticky top-[var(--studio-header-height,64px)] hidden h-[calc(100dvh-var(--studio-header-height,64px))] overflow-y-auto border-r border-border bg-card px-3 py-5 xl:block">
             <div className="flex items-center justify-between px-3">
               <p className="text-xs font-bold tracking-[0.15em] text-muted-foreground">{tr('発注内容', 'CHARACTER BRIEF')}</p>
               <Badge variant="secondary" className="text-xs">{tr(`${lockCount}ロック`, `${lockCount} locked`)}</Badge>
@@ -1668,9 +1670,9 @@ export function CharacterStudio() {
                   onClick={() => preferences.guidedMode ? goToGuidedStep(section.id) : navigateSection(section.id)}
                   aria-keyshortcuts={`Alt+${index + 1}`}
                   aria-current={preferences.guidedMode && section.id === guidedStepId ? 'step' : undefined}
-                  className={`group flex min-h-11 w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${(preferences.guidedMode ? section.id === guidedStepId : openSections.includes(section.id)) ? 'bg-primary/8' : 'hover:bg-accent'}`}
+                  className={`group flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition ${(preferences.guidedMode ? section.id === guidedStepId : openSections.includes(section.id)) ? 'bg-primary/8' : 'hover:bg-accent'}`}
                 >
-                  <span className={`grid size-8 shrink-0 place-items-center rounded-[11px] [&_svg]:size-3.5 ${(preferences.guidedMode ? section.id === guidedStepId : openSections.includes(section.id)) ? 'bg-primary/12 text-primary' : 'bg-muted text-muted-foreground'}`}>
+                  <span className={`grid size-8 shrink-0 place-items-center rounded-lg [&_svg]:size-3.5 ${(preferences.guidedMode ? section.id === guidedStepId : openSections.includes(section.id)) ? 'bg-primary/12 text-primary' : 'bg-muted text-muted-foreground'}`}>
                     {preferences.guidedMode && index < guidedStepIndex ? <Check /> : section.icon}
                   </span>
                   <span className="min-w-0 flex-1">
@@ -1681,11 +1683,11 @@ export function CharacterStudio() {
                 </button>
               ))}
             </nav>
-            <div className="mx-2 mt-5 flex min-h-11 items-center justify-between gap-3 rounded-xl border border-border bg-card p-3">
+            <div className="mx-2 mt-5 flex min-h-11 items-center justify-between gap-3 rounded-lg border border-border bg-card p-3">
               <div><p className="text-sm font-bold">{tr('かんたん表示', 'Simple mode')}</p><p className="text-xs text-muted-foreground">{tr(preferences.guidedMode ? '順番作成中は全項目を表示' : '主要項目だけ表示', preferences.guidedMode ? 'All fields are shown in step-by-step mode' : 'Show key fields')}</p></div>
               <Switch disabled={preferences.guidedMode} checked={preferences.simpleMode} onCheckedChange={(checked) => setPreferences((current) => ({ ...current, simpleMode: Boolean(checked) }))} aria-label={tr('かんたん表示を切り替える', 'Toggle simple mode')} />
             </div>
-            <div className="mx-2 mt-3 rounded-2xl border border-dashed border-primary/25 bg-primary/[0.05] p-3.5">
+            <div className="mx-2 mt-3 rounded-lg border border-dashed border-primary/25 bg-primary/[0.05] p-3.5">
               <p className="flex items-center gap-2 text-sm font-bold text-primary"><Lock className="size-3.5" />{tr('好きな項目はロック', 'Lock what you want to keep')}</p>
               <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{tr('鍵をかけた項目は、ランダム生成しても変わりません。', 'Locked fields stay unchanged when randomizing.')}</p>
             </div>
@@ -1699,13 +1701,13 @@ export function CharacterStudio() {
                 <span className="text-muted-foreground">{storageLoadFailed || autosave.status === 'conflict' ? tr('自動保存を停止中', 'Autosave paused') : !storageReady ? tr('保存データを確認中…', 'Loading saved work…') : autosave.status === 'saved' ? tr('保存済み · このブラウザ', 'Saved · this browser') : autosave.status === 'error' ? tr('未保存の変更があります', 'Unsaved changes') : tr('保存中…', 'Saving…')}</span>
                 <Button variant="ghost" size="sm" className="min-h-11" onClick={exportData}><Download className="size-4" />{tr('完全バックアップ', 'Full backup')}</Button>
               </div>
-              {autosave.status === 'conflict' && <p role="alert" className="mb-4 rounded-2xl border border-destructive/30 bg-destructive/5 p-4 text-sm">{tr('別のタブで更新されたため、このタブの自動保存を停止しました。必要なら完全バックアップを書き出してからページを再読み込みしてください。', 'Another tab updated this workspace. Autosave is paused to avoid overwriting it. Export a backup if needed, then reload this page.')}</p>}
-              {(storageLoadFailed || autosave.status === 'error') && <div role="alert" className="mb-4 rounded-2xl border border-destructive/30 bg-destructive/5 p-4 text-sm">
+              {autosave.status === 'conflict' && <p role="alert" className="mb-4 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm">{tr('別のタブで更新されたため、このタブの自動保存を停止しました。必要なら完全バックアップを書き出してからページを再読み込みしてください。', 'Another tab updated this workspace. Autosave is paused to avoid overwriting it. Export a backup if needed, then reload this page.')}</p>}
+              {(storageLoadFailed || autosave.status === 'error') && <div role="alert" className="mb-4 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm">
                 <p>{tr(storageLoadFailed ? '保存データを読み取れないため、元のデータを上書きしていません。新しく入力する内容は保存されません。' : 'ブラウザへ保存できません。画面を閉じる前に完全バックアップを書き出してください。', storageLoadFailed ? 'Saved data could not be read, so it has not been overwritten. New input will not be saved.' : 'Browser storage is unavailable. Export a full backup before closing this page.')}</p>
                 {!storageLoadFailed && <Button variant="outline" className="mt-3 min-h-11" onClick={() => autosave.flush()}>{tr('保存を再試行', 'Retry saving')}</Button>}
               </div>}
               {!preferences.guidedMode && (
-                <div role="tablist" aria-label={tr('入力方法', 'Input method')} aria-orientation="horizontal" className="mb-5 grid min-h-12 w-full grid-cols-2 rounded-2xl bg-muted/65 p-1">
+                <div role="tablist" aria-label={tr('入力方法', 'Input method')} aria-orientation="horizontal" className="mb-5 grid min-h-12 w-full grid-cols-2 rounded-lg bg-muted/65 p-1">
                   <button
                     type="button"
                     id="editor-tab-form"
@@ -1713,7 +1715,7 @@ export function CharacterStudio() {
                     aria-selected={editorMode === 'form'}
                     aria-controls="editor-panel-form"
                     tabIndex={editorMode === 'form' ? 0 : -1}
-                    className={`min-h-10 rounded-xl px-3 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${editorMode === 'form' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                    className={`min-h-10 rounded-lg px-3 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${editorMode === 'form' ? 'bg-card text-foreground shadow-none' : 'text-muted-foreground hover:text-foreground'}`}
                     onClick={() => setEditorMode('form')}
                     onKeyDown={handleEditorTabKeyDown}
                   >
@@ -1726,7 +1728,7 @@ export function CharacterStudio() {
                     aria-selected={editorMode === 'note'}
                     aria-controls="editor-panel-note"
                     tabIndex={editorMode === 'note' ? 0 : -1}
-                    className={`min-h-10 rounded-xl px-3 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${editorMode === 'note' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                    className={`min-h-10 rounded-lg px-3 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${editorMode === 'note' ? 'bg-card text-foreground shadow-none' : 'text-muted-foreground hover:text-foreground'}`}
                     onClick={() => setEditorMode('note')}
                     onKeyDown={handleEditorTabKeyDown}
                   >
@@ -1735,15 +1737,14 @@ export function CharacterStudio() {
                 </div>
               )}
               <CharacterCastPanel snapshot={{ draft, locks }} language={language} onChange={(next, action, coalesceKey) => commitSnapshot(next, action, { coalesceKey })} />
-              {!preferences.guidedMode && <Button variant="outline" className="mb-4 min-h-11 w-full" onClick={() => setQuickStartOpen(true)}>{tr('3項目で始める：用途・人数・画風', 'Quick start: purpose, people, style')}</Button>}
-              {activePersonNumber > 0 && <div id="active-person-toolbar" className="sticky top-[var(--studio-header-height,72px)] z-20 mb-4 rounded-xl border border-primary/30 bg-card/95 p-3 shadow-sm backdrop-blur">
+              {activePersonNumber > 0 && <div id="active-person-toolbar" className="sticky top-[var(--studio-header-height,72px)] z-20 mb-4 rounded-lg border border-primary/30 bg-card/95 p-3 shadow-none backdrop-blur">
                 <label className="flex flex-wrap items-center gap-2 text-sm font-bold">{tr('編集中', 'Editing')}
                   <Select value={draft.cast!.activeId} onValueChange={(id) => { if (id) { const next = selectCastMember(makeSnapshot(), id); commitSnapshot(next, tr('編集する人物を切替', 'Changed person to edit'), { announce: `${tr('編集中', 'Editing')}: ${personName(next, language)}` }); } }}>
                     <SelectTrigger aria-label={tr('編集中の人物を切り替え', 'Switch the person being edited')} className="min-h-11 min-w-0 flex-1"><SelectValue>{activePersonLabel}</SelectValue></SelectTrigger>
                     <SelectContent>{draft.cast!.members.map((member, index) => <SelectItem key={member.id} value={member.id}>{tr(`人物${index + 1}`, `Person ${index + 1}`)}{(language === 'en' ? member.nameEn || member.name : member.name) ? ` · ${language === 'en' ? member.nameEn || member.name : member.name}` : ''}</SelectItem>)}</SelectContent>
                   </Select>
                 </label>
-                <p className="mt-1 text-sm text-muted-foreground">{tr('外見・衣装・表情はこの人物のみ。画風・カメラ・背景は全員共通。', 'Appearance, outfit, expression: this person. Style, camera, scene: shared.')}</p>
+                <p className="sr-only">{tr('外見・衣装・表情はこの人物のみ。画風・カメラ・背景は全員共通。', 'Appearance, outfit, expression: this person. Style, camera, scene: shared.')}</p>
               </div>}
               {!preferences.guidedMode && (
                 <div id="editor-panel-note" role="tabpanel" aria-labelledby="editor-tab-note" hidden={editorMode !== 'note'}>
@@ -1774,7 +1775,7 @@ export function CharacterStudio() {
                 hidden={!preferences.guidedMode && editorMode === 'note'}
               >
               {preferences.guidedMode ? (
-                <div className="mb-5 overflow-hidden rounded-[22px] border border-primary/25 bg-[linear-gradient(135deg,color-mix(in_oklab,var(--primary)_12%,var(--card)),var(--card)_64%)] p-4 sm:p-5">
+                <div className="mb-5 overflow-hidden rounded-lg border border-primary/25 bg-card p-4 sm:p-5">
                   <div className="flex flex-col gap-4">
                     <div>
                       <p className="flex items-center gap-2 text-sm font-bold text-primary"><FileText className="size-4" />{tr('順番に作成中', 'Step-by-step mode')}</p>
@@ -1784,7 +1785,7 @@ export function CharacterStudio() {
                     <div className="flex flex-wrap items-center justify-end gap-1">
                       <Button variant="ghost" size="icon" className="min-h-11 min-w-11" aria-keyshortcuts="Control+Z Meta+Z" onClick={undo} disabled={timeline.past.length === 0} aria-label={tr('元に戻す', 'Undo')}><RotateCcw className="size-4" /></Button>
                       <Button variant="ghost" size="icon" className="min-h-11 min-w-11" aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y Meta+Y" onClick={redo} disabled={timeline.future.length === 0} aria-label={tr('やり直す', 'Redo')}><Redo2 className="size-4" /></Button>
-                      <Button variant="outline" size="sm" className="min-h-11 rounded-xl bg-card" onClick={leaveGuidedMode}>{tr('通常表示に戻る', 'Return to full editor')}</Button>
+                      <Button variant="outline" size="sm" className="min-h-11 rounded-lg bg-card" onClick={leaveGuidedMode}>{tr('通常表示に戻る', 'Return to full editor')}</Button>
                     </div>
                   </div>
                   <Progress
@@ -1803,7 +1804,7 @@ export function CharacterStudio() {
                               type="button"
                               aria-current={current ? 'step' : undefined}
                               onClick={() => goToGuidedStep(sectionId)}
-                              className={`flex min-h-11 items-center gap-2 rounded-xl border px-3 text-sm font-semibold transition ${current ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card hover:border-primary/40'}`}
+                              className={`flex min-h-11 items-center gap-2 rounded-lg border px-3 text-sm font-semibold transition ${current ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card hover:border-primary/40'}`}
                             >
                               <span className={`grid size-5 place-items-center rounded-full text-xs ${current ? 'bg-primary-foreground/18' : index < guidedStepIndex ? 'bg-primary/12 text-primary' : 'bg-muted text-muted-foreground'}`}>{index < guidedStepIndex ? <Check className="size-3" /> : index + 1}</span>
                               {language === 'ja' ? section.labelJa : section.labelEn}
@@ -1815,19 +1816,24 @@ export function CharacterStudio() {
                   </nav>
                 </div>
               ) : (
-              <div className="mb-5 overflow-hidden rounded-[22px] border border-primary/18 bg-[linear-gradient(135deg,color-mix(in_oklab,var(--primary)_8%,var(--card)),var(--card)_58%)] p-4 sm:p-5">
-                <div className="flex flex-col gap-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="min-w-0 flex-1">
-                      <p className="flex items-center gap-2 text-sm font-bold text-primary"><Wand2 className="size-3.5" />{tr(backgroundOnly ? '統一感のある背景を一発生成' : '統一感のあるキャラを一発生成', backgroundOnly ? 'Generate a coherent background' : 'Generate a coherent character')}</p>
-                      <p className="mt-1 text-sm text-muted-foreground">{lastAction}{language === 'ja' ? '。' : ' — '}{tr(backgroundOnly ? '人物設定は保持したまま、背景項目だけを変更します。' : '通常生成はまとまり重視で、時々小さなギャップを加えます。', backgroundOnly ? 'Only background settings change; character settings are preserved.' : 'Randomization favors coherence and may add a subtle contrast.')}</p>
+              <div className="mb-5 rounded-lg border border-border bg-card p-3">
+                <div className="flex flex-col gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button aria-label={tr(backgroundOnly ? '背景をおまかせ生成' : 'キャラクターをおまかせ生成', backgroundOnly ? 'Randomize background' : 'Randomize character')} aria-keyshortcuts="Control+Enter Meta+Enter" className="min-h-11 gap-2" onClick={() => runRandom()}><Dices className="size-4" />{tr('おまかせ生成', 'Randomize')}</Button>
+                    <div className="ml-auto flex shrink-0 items-center gap-1">
+                      <Button variant="ghost" size="icon" className="min-h-11 min-w-11" aria-keyshortcuts="Control+Z Meta+Z" onClick={undo} disabled={timeline.past.length === 0} aria-label={tr('元に戻す', 'Undo')}><RotateCcw className="size-4" /></Button>
+                      <Button variant="ghost" size="icon" className="min-h-11 min-w-11" aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y Meta+Y" onClick={redo} disabled={timeline.future.length === 0} aria-label={tr('やり直す', 'Redo')}><Redo2 className="size-4" /></Button>
                     </div>
-                    <Button variant="outline" size="sm" className="min-h-11 w-full shrink-0 gap-1.5 rounded-xl bg-card sm:w-auto" onClick={() => setGuidedResetOpen(true)}><FileText className="size-4" />{tr('一から順に作る', 'Build step by step')}</Button>
                   </div>
+                  <p className="text-xs text-muted-foreground">{lastAction}</p>
+                  <details className="border-t border-border">
+                  <summary className="py-3 text-sm font-semibold">{tr('作成オプション・一から作る', 'Creation options & starting over')}</summary>
+                  <Button variant="outline" className="mb-3 min-h-11" onClick={() => setQuickStartOpen(true)}>{tr('3項目で始める：用途・人数・画風', 'Quick start: purpose, people, style')}</Button>
+                  <p className="mb-3 text-sm text-muted-foreground">{tr(backgroundOnly ? '人物設定は保持したまま、背景項目だけを変更します。' : 'ロックした項目は保持。複数人モードでは編集中の人物に反映します。', backgroundOnly ? 'Only background settings change; character settings are preserved.' : 'Locked fields stay unchanged. In group mode, randomization targets the person being edited.')}</p>
                   <div className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
                     <div className="min-w-0">
                       <Select value={themeId || null} onValueChange={(value) => value && setThemeId(String(value))}>
-                        <SelectTrigger aria-label={tr('ランダム生成テーマ', 'Random theme')} className="h-11 w-full rounded-xl bg-card">
+                        <SelectTrigger aria-label={tr('ランダム生成テーマ', 'Random theme')} className="h-11 w-full rounded-lg bg-card">
                           <SelectValue placeholder={tr('テーマを選ぶ', 'Choose a theme')}>{themeId
                             ? language === 'ja'
                               ? themeOptions.find((theme) => theme.id === themeId)?.labelJa
@@ -1839,19 +1845,17 @@ export function CharacterStudio() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <Button variant="secondary" size="sm" className="min-h-11 w-full rounded-xl sm:w-auto" onClick={runTheme}>{tr('テーマで生成', 'Use theme')}</Button>
+                    <Button variant="secondary" size="sm" className="min-h-11 w-full rounded-lg sm:w-auto" onClick={runTheme}>{tr('テーマで生成', 'Use theme')}</Button>
                   </div>
-                  <div className="flex min-w-0 flex-wrap items-center gap-2">
-                    <Button variant="outline" size="sm" className="min-h-11 flex-1 gap-1.5 rounded-xl bg-card sm:flex-none" onClick={createBatch}><CopyPlus className="size-4" />{tr('4案', '4 ideas')}</Button>
-                    {!backgroundOnly && <Button variant="outline" size="sm" aria-keyshortcuts="Control+Shift+Enter Meta+Shift+Enter" className="min-h-11 flex-1 rounded-xl bg-card sm:flex-none" onClick={runGap}>{activeGapLabel ? tr('別のギャップ', 'New contrast') : tr('ギャップ', 'Contrast')}</Button>}
-                    <div className="ml-auto flex shrink-0 items-center gap-1">
-                      <Button variant="ghost" size="icon" className="min-h-11 min-w-11" aria-keyshortcuts="Control+Z Meta+Z" onClick={undo} disabled={timeline.past.length === 0} aria-label={tr('元に戻す', 'Undo')}><RotateCcw className="size-4" /></Button>
-                      <Button variant="ghost" size="icon" className="min-h-11 min-w-11" aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y Meta+Y" onClick={redo} disabled={timeline.future.length === 0} aria-label={tr('やり直す', 'Redo')}><Redo2 className="size-4" /></Button>
-                    </div>
+                  <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">
+                    <Button variant="outline" size="sm" className="min-h-11 flex-1 gap-1.5 rounded-lg bg-card sm:flex-none" onClick={createBatch}><CopyPlus className="size-4" />{tr('4案', '4 ideas')}</Button>
+                    {!backgroundOnly && <Button variant="outline" size="sm" aria-keyshortcuts="Control+Shift+Enter Meta+Shift+Enter" className="min-h-11 flex-1 rounded-lg bg-card sm:flex-none" onClick={runGap}>{activeGapLabel ? tr('別のギャップ', 'New contrast') : tr('ギャップ', 'Contrast')}</Button>}
+                    <Button variant="outline" size="sm" className="min-h-11 gap-1.5" onClick={() => setGuidedResetOpen(true)}><FileText className="size-4" />{tr('一から順に作る', 'Build step by step')}</Button>
                   </div>
+                  </details>
                 </div>
                 {lastChanges.length > 0 && (
-                  <div className="mt-3 rounded-2xl border border-border bg-card/80 p-3" aria-label={tr('直前の変更内容', 'Most recent changes')}>
+                  <div className="mt-3 rounded-lg border border-border bg-card/80 p-3" aria-label={tr('直前の変更内容', 'Most recent changes')}>
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-sm font-bold">{tr(`変更 ${lastChanges.length}項目`, `${lastChanges.length} changes`)}</p>
                       {lastChanges.length > 3 && <Button variant="ghost" size="sm" className="min-h-11" onClick={() => setShowAllChanges((current) => !current)}>{showAllChanges ? tr('閉じる', 'Show less') : tr('詳細', 'Details')}</Button>}
@@ -1864,13 +1868,13 @@ export function CharacterStudio() {
                   </div>
                 )}
                 {backgroundOnly && (
-                  <div className="mt-3 rounded-2xl border border-sky-500/20 bg-sky-500/8 p-3 text-sm">
+                  <div className="mt-3 rounded-lg border border-sky-500/20 bg-sky-500/8 p-3 text-sm">
                     <p className="font-bold">{tr('背景専用モード', 'Background-only mode')}</p>
                     <p className="mt-1 text-muted-foreground">{tr('人物・顔・衣装・表情の設定は非表示ですが保存されています。人物用途へ戻すと同じ内容を再利用できます。', 'Character, face, outfit, and pose settings are hidden but preserved. Switch back to a character purpose to reuse them.')}</p>
                   </div>
                 )}
                 {activeGapLabel && (
-                  <div className="mt-3 flex items-start justify-between gap-3 rounded-2xl border border-primary/15 bg-card/80 p-3">
+                  <div className="mt-3 flex items-start justify-between gap-3 rounded-lg border border-primary/15 bg-card/80 p-3">
                     <div className="min-w-0">
                       <p className="text-xs font-bold tracking-[0.12em] text-primary">{tr('適用中のギャップ', 'Active contrast')}</p>
                       <p className="mt-1 text-xs font-semibold leading-relaxed">{activeGapLabel}</p>
@@ -1894,24 +1898,7 @@ export function CharacterStudio() {
               >
                 <StudioSection hidden={!displayedSectionIds.includes('purpose')} value="purpose" icon={<Sparkles />} eyebrow={sharedStep(1)} title={tr('何に使うイラスト？', 'What is this illustration for?')} summary={language === 'ja' ? labelFor('purpose', draft.purpose) : englishFor('purpose', draft.purpose)}>
                   <p className="mb-4 text-sm leading-relaxed text-muted-foreground">{tr(preferences.guidedMode ? '用途だけを選びます。構図・縦横比・禁止事項は後のステップで自分で決められます。' : '用途を選ぶと構図・縦横比・禁止事項のおすすめを自動設定します。ロック中の項目は変更しません。', preferences.guidedMode ? 'This step selects only the purpose. You will choose composition, aspect ratio, and exclusions later.' : 'Choosing a purpose applies recommended composition, aspect ratio, and exclusions. Locked fields stay unchanged.')}</p>
-                  <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-                    {purposes.map((purpose) => {
-                      const active = draft.purpose === purpose.id;
-                      return (
-                        <button
-                          key={purpose.id}
-                          type="button"
-                          onClick={() => selectPurpose(purpose.id)}
-                          aria-pressed={active}
-                          className={`relative min-h-20 rounded-2xl border p-3 text-left transition ${active ? 'border-primary bg-primary/[0.07] shadow-sm' : 'border-border bg-background hover:-translate-y-0.5 hover:border-primary/35'}`}
-                        >
-                          {active && <span className="absolute right-2.5 top-2.5 grid size-5 place-items-center rounded-full bg-primary text-primary-foreground"><Check className="size-3" /></span>}
-                          <span className="block pr-5 text-sm font-bold leading-snug">{language === 'ja' ? purpose.labelJa : purpose.labelEn}</span>
-                          <span className="mt-2 block text-xs text-muted-foreground">{language === 'ja' ? purpose.labelEn : purpose.labelJa}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <SingleSelect language={language} label={tr('イラストの用途', 'Illustration purpose')} value={draft.purpose} options={purposes} onChange={selectPurpose} />
                   <div className="mt-4">{customField(tr('用途の補足・自由設定', 'Purpose notes'), 'purpose', tr('用途の補足・自由設定', 'Add purpose-specific notes'))}</div>
                 </StudioSection>
 
@@ -1929,7 +1916,7 @@ export function CharacterStudio() {
                     onSaveTemplate={() => { setPresetName(tr(activeStylePreset?.nameJa ?? '画風', activeStylePreset?.nameEn ?? 'Style') + tr('テンプレート', ' template')); setManagerTab('presets'); setManagerOpen(true); }}
                     onPreview={() => { setOutputMode('blocks'); showPreview(); }}
                   />
-                  {activeStylePreset ? <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border p-3"><span className="text-sm text-muted-foreground">{tr('画風のランダム変更をロック', 'Lock random style changes')}</span><Button variant="outline" className="min-h-11 rounded-xl" aria-pressed={Boolean(locks.style)} onClick={() => toggleLock('style')}><Lock className="size-4" />{locks.style ? tr('ロック中', 'Locked') : tr('未ロック', 'Unlocked')}</Button></div> : <div className="mt-5 border-t border-border pt-4">
+                  {activeStylePreset ? <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-3"><span className="text-sm text-muted-foreground">{tr('画風のランダム変更をロック', 'Lock random style changes')}</span><Button variant="outline" className="min-h-11 rounded-lg" aria-pressed={Boolean(locks.style)} onClick={() => toggleLock('style')}><Lock className="size-4" />{locks.style ? tr('ロック中', 'Locked') : tr('未ロック', 'Unlocked')}</Button></div> : <div className="mt-5 border-t border-border pt-4">
                   <h3 className="mb-3 text-sm font-semibold">{tr('従来の絵柄設定', 'Classic style settings')}</h3>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <FormRow label={tr('絵柄プリセット', 'Style preset')} actions={fieldActions('style', tr('絵柄', 'Style'))}>
@@ -1948,7 +1935,7 @@ export function CharacterStudio() {
                     <FormRow label={tr('性別・表現', 'Gender / presentation')} actions={fieldActions('gender', tr('性別', 'Gender'))}><SingleSelect language={language} label={tr('性別・表現', 'Gender / presentation')} value={draft.gender} options={genders} onChange={(value) => updateField('gender', value)} /></FormRow>
                     <FormRow label={tr('年齢層', 'Age group')} actions={fieldActions('ageGroup', tr('年齢層', 'Age group'))}><SingleSelect language={language} label={tr('年齢層', 'Age group')} value={draft.ageGroup} options={ageGroups} onChange={(value) => updateField('ageGroup', value)} /></FormRow>
                     <FormRow label={tr('数値で年齢指定', 'Exact age')} hint={tr('0〜999の整数。入力すると年齢層より優先します', 'An integer from 0–999; this overrides age group')} actions={fieldActions('ageNumber', tr('数値年齢', 'Exact age'))}>
-                      <Input aria-label={tr('数値で年齢指定', 'Exact age')} type="text" inputMode="numeric" pattern="[0-9]{1,3}" maxLength={3} value={draft.ageNumber} onChange={(event) => { const value = event.target.value; if (/^\d{0,3}$/.test(value)) updateField('ageNumber', value); }} onBlur={() => addHistory(tr('数値年齢を編集', 'Edited exact age'), makeSnapshot(), 'manual')} placeholder={tr('例：24', 'e.g. 24')} className="h-11 rounded-xl bg-card" />
+                      <Input aria-label={tr('数値で年齢指定', 'Exact age')} type="text" inputMode="numeric" pattern="[0-9]{1,3}" maxLength={3} value={draft.ageNumber} onChange={(event) => { const value = event.target.value; if (/^\d{0,3}$/.test(value)) updateField('ageNumber', value); }} onBlur={() => addHistory(tr('数値年齢を編集', 'Edited exact age'), makeSnapshot(), 'manual')} placeholder={tr('例：24', 'e.g. 24')} className="h-11 rounded-lg bg-card" />
                     </FormRow>
                     <FormRow label={tr('種族', 'Species')} actions={fieldActions('species', tr('種族', 'Species'))}><SingleSelect language={language} label={tr('種族', 'Species')} value={draft.species} options={species} onChange={(value) => updateField('species', value)} /></FormRow>
                     <FormRow label={tr('体格', 'Build')} actions={fieldActions('build', tr('体格', 'Build'))}><SingleSelect language={language} label={tr('体格', 'Build')} value={draft.build} options={builds} onChange={(value) => updateField('build', value)} /></FormRow>
@@ -2010,7 +1997,7 @@ export function CharacterStudio() {
                     <FormRow label={tr('構図', 'Composition')} hint={tr(backgroundOnly ? '背景にも使える配置・余白・奥行きから選びます。保持中の人物用構図は出力されません。' : `${compositions.length}種から1つ。写す範囲・配置・余白・奥行きで絞れます。`, backgroundOnly ? 'Choose scene-compatible placement, space, or depth. Retained portrait-only framing is not output.' : `Choose one of ${compositions.length}. Filter by framing, placement, space, or depth.`)} actions={fieldActions('composition', tr('構図', 'Composition'))}><SingleSelect {...catalogProps('composition')} searchable label={tr('構図', 'Composition')} value={draft.composition} options={backgroundOnly ? compositions.filter((choice) => isSceneComposition(choice.id) || choice.id === draft.composition) : compositions} onChange={(value) => updateField('composition', value)} /></FormRow>
                     <FormRow label={tr('画面の縦横', 'Aspect ratio')} actions={fieldActions('aspectRatio', tr('画面の縦横', 'Aspect ratio'))}><SingleSelect language={language} label={tr('画面の縦横', 'Aspect ratio')} value={draft.aspectRatio} options={aspectRatios} onChange={(value) => updateField('aspectRatio', value)} /></FormRow>
                   </div>
-                  <div className="mt-4 rounded-xl border border-border p-3">
+                  <div className="mt-4 rounded-lg border border-border p-3">
                     <p className="text-sm font-bold">{tr('SNS用の配置・余白プリセット', 'Social layout presets')}</p>
                     <p className="mt-1 text-sm text-muted-foreground">{tr('構図と余白メモを変更します。複数人の場合は全員を選んだ側へ配置します。文字そのものは追加しません。', 'Changes framing and the space note. In group mode, all people move to the selected side. No text is added.')}</p>
                     <div className="mt-3 flex flex-wrap gap-2">{(['right', 'left'] as const).map((space) => <Button key={space} variant="outline" className="h-auto min-h-11 whitespace-normal" disabled={Boolean(locks.composition)} onClick={() => {
@@ -2037,15 +2024,15 @@ export function CharacterStudio() {
                   <FormRow label={tr('禁止事項・ネガティブ', 'Negative prompt / exclusions')} hint={tr('選んだ内容は通常の描写と分けて出力します', 'These are output separately from positive directions')} actions={fieldActions('negatives', tr('禁止事項', 'Exclusions'))}>
                     <ChoiceChips {...catalogProps('negatives')} label={tr('禁止事項・ネガティブ', 'Negative prompt / exclusions')} options={negatives} selected={draft.negatives} onChange={(value) => updateField('negatives', value)} limit={15} />
                   </FormRow>
-                  <Textarea id="custom-negatives" aria-label={tr('独自の禁止事項', 'Custom exclusions')} value={draft.custom.negatives ?? ''} onChange={(event) => updateCustom('negatives', event.target.value)} onBlur={() => addHistory(tr('独自の禁止事項を編集', 'Edited custom exclusions'), makeSnapshot(), 'manual')} placeholder={tr('独自の禁止事項を、句点または改行で入力', 'Enter custom exclusions separated by punctuation or new lines')} className="mt-3 min-h-24 rounded-xl bg-card text-sm" />
+                  <Textarea id="custom-negatives" aria-label={tr('独自の禁止事項', 'Custom exclusions')} value={draft.custom.negatives ?? ''} onChange={(event) => updateCustom('negatives', event.target.value)} onBlur={() => addHistory(tr('独自の禁止事項を編集', 'Edited custom exclusions'), makeSnapshot(), 'manual')} placeholder={tr('独自の禁止事項を、句点または改行で入力', 'Enter custom exclusions separated by punctuation or new lines')} className="mt-3 min-h-24 rounded-lg bg-card text-sm" />
                   <div className="mt-4 grid gap-3"><FormRow label={tr('必須条件（全員共通）', 'Must-haves (shared)')}>{customField(tr('必須条件', 'Must-haves'), 'must', tr('例：衣装のロゴを入れない', 'e.g. no logos on clothing'))}</FormRow><FormRow label={tr('希望条件（可能なら）', 'Preferences (if possible)')}>{customField(tr('希望条件', 'Preferences'), 'preference', tr('例：夕方の柔らかな雰囲気', 'e.g. a soft evening mood'))}</FormRow></div>
                 </StudioSection>
               </Accordion>
               {preferences.guidedMode && (
-                <div className="mt-4 hidden items-center justify-between gap-3 rounded-2xl border border-border bg-card p-3 sm:flex">
-                  <Button variant="outline" className="min-h-11 rounded-xl" disabled={guidedStepIndex === 0} onClick={() => moveGuidedStep(-1)}>{tr('戻る', 'Back')}</Button>
+                <div className="mt-4 hidden items-center justify-between gap-3 rounded-lg border border-border bg-card p-3 sm:flex">
+                  <Button variant="outline" className="min-h-11 rounded-lg" disabled={guidedStepIndex === 0} onClick={() => moveGuidedStep(-1)}>{tr('戻る', 'Back')}</Button>
                   <p className="text-center text-sm text-muted-foreground">{tr(`ステップ ${guidedStepIndex + 1} / ${guidedSectionIds.length}`, `Step ${guidedStepIndex + 1} of ${guidedSectionIds.length}`)}</p>
-                  <Button className="min-h-11 rounded-xl" onClick={() => moveGuidedStep(1)}>
+                  <Button className="min-h-11 rounded-lg" onClick={() => moveGuidedStep(1)}>
                     {nextGuidedStepMeta
                       ? tr(`次へ：${nextGuidedStepMeta.labelJa}`, `Next: ${nextGuidedStepMeta.labelEn}`)
                       : tr('指示書を確認', 'Review brief')}
@@ -2056,7 +2043,7 @@ export function CharacterStudio() {
             </div>
           </section>
 
-          <aside id="prompt-preview" aria-labelledby="preview-heading" className="scroll-mt-24 border-t border-border bg-preview px-3 py-5 sm:px-6 xl:sticky xl:top-[72px] xl:h-[calc(100vh-72px)] xl:overflow-y-auto xl:border-l xl:border-t-0 xl:px-5 xl:py-7">
+          <aside id="prompt-preview" aria-labelledby="preview-heading" className="min-w-0 scroll-mt-[calc(var(--studio-header-height,64px)+1rem)] border-t border-border bg-preview px-3 py-5 sm:px-6 xl:sticky xl:top-[var(--studio-header-height,64px)] xl:h-[calc(100dvh-var(--studio-header-height,64px))] xl:overflow-y-auto xl:border-l xl:border-t-0 xl:px-5 xl:py-7">
             <div className="mx-auto max-w-2xl xl:max-w-none">
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -2066,44 +2053,43 @@ export function CharacterStudio() {
                 <Badge variant="outline" className="gap-1.5 border-success/25 bg-success/10 text-success"><span className="size-1.5 rounded-full bg-success" />{tr('自動更新', 'Auto-updated')}</Badge>
               </div>
 
-              <CastOutputTools snapshot={{ draft, locks }} language={language} onJump={jumpToInput} onCopy={(text, label, scope) => { void copyText(text, label, true, scope); }} />
-              <div className="mt-4 overflow-hidden rounded-[22px] border border-border bg-card shadow-[0_14px_38px_rgba(78,42,68,0.08)]">
+              <div className="mt-4 overflow-hidden rounded-lg border border-border bg-card shadow-none">
                 <Tabs value={outputMode} onValueChange={(value) => setOutputMode(value as StudioOutputMode)} className="gap-0">
                   <div className="border-b border-border px-2 pt-2 pb-1">
                     <TabsList variant="line" className="grid w-full grid-cols-3 gap-1 group-data-horizontal/tabs:h-auto">
                       {outputTabs.map((tab) => <TabsTrigger key={tab.value} value={tab.value} className="h-11 min-w-0 px-2 text-sm group-data-horizontal/tabs:after:bottom-0">{language === 'ja' ? tab.labelJa : tab.labelEn}</TabsTrigger>)}
                     </TabsList>
+                    <Button disabled={!activeOutput} className="my-2 min-h-11 w-full gap-2" aria-keyshortcuts="Alt+C" onClick={() => copyOutput()}>
+                      <Clipboard className="size-4" />{tr(`${activeTabLabel}をコピー`, `Copy ${activeTabLabel}`)}
+                    </Button>
                   </div>
                   {outputTabs.map((tab) => (
                     <TabsContent key={tab.value} value={tab.value} className="min-h-[330px] p-5">
-                      <p className="mb-4 rounded-xl bg-muted/55 p-3 text-sm text-muted-foreground">{language === 'ja' ? tab.hintJa : tab.hintEn}</p>
-                      {tab.value === 'blocks' ? (activeStylePreset && draft.stylePack ? <PromptBlockPreview blocks={promptBlocks} selection={draft.stylePack} language={language} onChange={updateStylePack} onCopy={(text, label) => { void copyText(text, label, true, blockCopyScope); }} /> : <p className="rounded-xl border border-dashed border-border p-5 text-sm text-muted-foreground">{tr('STEP 2「絵柄と仕上げ」の画風ライブラリから1つ選ぶと、ブロック形式を使えます。従来の絵柄設定は日本語・Englishなどのタブで確認できます。', 'Select a style from the STEP 2 library to use block output. Classic styles remain available in Japanese, English, and the other tabs.')}</p>) : !outputs[tab.value] ? (
-                        <div className="grid min-h-48 place-items-center rounded-2xl border border-dashed border-border bg-muted/20 p-6 text-center">
+                      <p className="mb-4 rounded-lg bg-muted/55 p-3 text-sm text-muted-foreground">{language === 'ja' ? tab.hintJa : tab.hintEn}</p>
+                      {tab.value === 'blocks' ? (activeStylePreset && draft.stylePack ? <PromptBlockPreview blocks={promptBlocks} selection={draft.stylePack} language={language} onChange={updateStylePack} onCopy={(text, label) => { void copyText(text, label, true, blockCopyScope); }} /> : <p className="rounded-lg border border-dashed border-border p-5 text-sm text-muted-foreground">{tr('STEP 2「絵柄と仕上げ」の画風ライブラリから1つ選ぶと、ブロック形式を使えます。従来の絵柄設定は日本語・Englishなどのタブで確認できます。', 'Select a style from the STEP 2 library to use block output. Classic styles remain available in Japanese, English, and the other tabs.')}</p>) : !outputs[tab.value] ? (
+                        <div className="grid min-h-48 place-items-center rounded-lg border border-dashed border-border bg-muted/20 p-6 text-center">
                           <div><FileText className="mx-auto size-7 text-muted-foreground/45" /><p className="mt-3 text-sm font-bold">{tr('まだ要素が選ばれていません', 'No details selected yet')}</p><p className="mt-1 text-sm text-muted-foreground">{tr('入力した内容だけが、ここに順番に表示されます。', 'Only the details you choose will appear here.')}</p></div>
                         </div>
                       ) : (tab.value === 'ja' || tab.value === 'en') ? (
                         <div>
-                          <p className="whitespace-pre-wrap text-[14px] leading-7 text-foreground/86">{tab.value === 'ja' ? outputs.positiveJa : outputs.positiveEn}</p>
+                          <p className="whitespace-pre-wrap [overflow-wrap:anywhere] text-[14px] leading-7 text-foreground/86">{tab.value === 'ja' ? outputs.positiveJa : outputs.positiveEn}</p>
                           {(tab.value === 'ja' ? outputs.negativeJa : outputs.negativeEn) && (
-                            <div className="mt-5 rounded-xl border border-negative-foreground/10 bg-negative p-3.5 text-sm leading-6 text-negative-foreground">
+                            <div className="mt-5 rounded-lg border border-negative-foreground/10 bg-negative p-3.5 text-sm leading-6 text-negative-foreground">
                               {tab.value === 'ja' ? outputs.negativeJa : outputs.negativeEn}
                             </div>
                           )}
                         </div>
                       ) : (
-                        <pre className="whitespace-pre-wrap font-sans text-sm leading-7 text-foreground/86">{outputs[tab.value]}</pre>
+                        <pre className="whitespace-pre-wrap [overflow-wrap:anywhere] font-sans text-sm leading-7 text-foreground/86">{outputs[tab.value]}</pre>
                       )}
                     </TabsContent>
                   ))}
                 </Tabs>
                 <div className="border-t border-border bg-muted/35 p-3">
-                  <Button disabled={!activeOutput} className="min-h-11 w-full gap-2 rounded-xl" aria-keyshortcuts="Alt+C" onClick={() => copyOutput()}>
-                    <Clipboard className="size-4" />{tr(`${activeTabLabel}をコピー`, `Copy ${activeTabLabel}`)}
-                  </Button>
                   {(outputMode === 'ja' || outputMode === 'en') && (
                     <div className="mt-2 grid grid-cols-2 gap-2">
-                      <Button variant="outline" size="sm" className="min-h-11 rounded-xl bg-card" disabled={!(outputMode === 'ja' ? outputs.positiveJa : outputs.positiveEn)} onClick={() => copyText(outputMode === 'ja' ? outputs.positiveJa : outputs.positiveEn, tr('肯定側をコピー', 'Copied positive prompt'))}>{tr('肯定だけ', 'Positive only')}</Button>
-                      <Button variant="outline" size="sm" className="min-h-11 rounded-xl bg-card" disabled={!(outputMode === 'ja' ? outputs.negativeJa : outputs.negativeEn)} onClick={() => copyText(outputMode === 'ja' ? outputs.negativeJa : outputs.negativeEn, tr('制約側をコピー', 'Copied negative prompt'), true, tr('共通の制約のみ。人物・画風の肯定指定は含めません。', 'Shared constraints only. No positive person or style directions.'))}>{tr('制約だけ', 'Negative only')}</Button>
+                      <Button variant="outline" size="sm" className="min-h-11 rounded-lg bg-card" disabled={!(outputMode === 'ja' ? outputs.positiveJa : outputs.positiveEn)} onClick={() => copyText(outputMode === 'ja' ? outputs.positiveJa : outputs.positiveEn, tr('肯定側をコピー', 'Copied positive prompt'))}>{tr('肯定だけ', 'Positive only')}</Button>
+                      <Button variant="outline" size="sm" className="min-h-11 rounded-lg bg-card" disabled={!(outputMode === 'ja' ? outputs.negativeJa : outputs.negativeEn)} onClick={() => copyText(outputMode === 'ja' ? outputs.negativeJa : outputs.negativeEn, tr('制約側をコピー', 'Copied negative prompt'), true, tr('共通の制約のみ。人物・画風の肯定指定は含めません。', 'Shared constraints only. No positive person or style directions.'))}>{tr('制約だけ', 'Negative only')}</Button>
                     </div>
                   )}
                   <div className="mt-2 flex items-center justify-between px-1 text-sm text-muted-foreground">
@@ -2113,7 +2099,10 @@ export function CharacterStudio() {
                 </div>
               </div>
 
-              <div className="mt-3 rounded-2xl border border-border bg-card p-4">
+              <CastOutputTools snapshot={{ draft, locks }} language={language} onJump={jumpToInput} onCopy={(text, label, scope) => { void copyText(text, label, true, scope); }} />
+              <details className="mt-3 rounded-lg border border-border bg-card px-3">
+                <summary className="py-3 text-sm font-semibold">{tr('サービス別の形式・部分コピー', 'Tool-specific formats & partial copy')}</summary>
+                <div className="pb-3">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between xl:flex-col xl:items-stretch">
                   <div className="min-w-0 flex-1">
                     <p className="mb-2 flex items-center gap-2 text-sm font-bold"><Settings2 className="size-4 text-primary" />{tr('サービス別の形式', 'Tool-specific format')}</p>
@@ -2125,59 +2114,60 @@ export function CharacterStudio() {
                       onChange={(value) => setPreferences((current) => ({ ...current, exportProfile: value as ExportProfile }))}
                     />
                   </div>
-                  <Button disabled={!profileOutput.combined} className="min-h-11 gap-2 rounded-xl" onClick={() => copyText(profileOutput.combined, tr(`${profileOutput.labelJa}形式をコピー`, `Copied ${profileOutput.labelEn} format`))}><Clipboard className="size-4" />{tr('形式をコピー', 'Copy format')}</Button>
+                  <Button disabled={!profileOutput.combined} className="min-h-11 gap-2 rounded-lg" onClick={() => copyText(profileOutput.combined, tr(`${profileOutput.labelJa}形式をコピー`, `Copied ${profileOutput.labelEn} format`))}><Clipboard className="size-4" />{tr('形式をコピー', 'Copy format')}</Button>
                 </div>
                 <p className="mt-3 text-sm text-muted-foreground">{language === 'ja' ? profileOutput.hintJa : profileOutput.hintEn}</p>
                 <div className="mt-3 grid grid-cols-2 gap-2">
-                  <Button variant="outline" size="sm" className="min-h-11 rounded-xl" disabled={!profileOutput.positive} onClick={() => copyText(profileOutput.positive, tr('肯定側をコピー', 'Copied positive prompt'))}>{tr('肯定側をコピー', 'Copy positive')}</Button>
-                  <Button variant="outline" size="sm" className="min-h-11 rounded-xl" disabled={!profileOutput.negative} onClick={() => copyText(profileOutput.negative, tr('制約側をコピー', 'Copied negative prompt'), true, tr('共通の制約のみ。人物・画風の肯定指定は含めません。', 'Shared constraints only. No positive person or style directions.'))}>{tr('制約側をコピー', 'Copy negative')}</Button>
+                  <Button variant="outline" size="sm" className="min-h-11 rounded-lg" disabled={!profileOutput.positive} onClick={() => copyText(profileOutput.positive, tr('肯定側をコピー', 'Copied positive prompt'))}>{tr('肯定側をコピー', 'Copy positive')}</Button>
+                  <Button variant="outline" size="sm" className="min-h-11 rounded-lg" disabled={!profileOutput.negative} onClick={() => copyText(profileOutput.negative, tr('制約側をコピー', 'Copied negative prompt'), true, tr('共通の制約のみ。人物・画風の肯定指定は含めません。', 'Shared constraints only. No positive person or style directions.'))}>{tr('制約側をコピー', 'Copy negative')}</Button>
                 </div>
-              </div>
+                </div>
+              </details>
 
               {notices.length > 0 && (
-                <div className="mt-3 rounded-2xl border border-amber-500/25 bg-amber-500/8 p-4">
-                  <p className="flex items-center gap-2 text-sm font-bold text-amber-800 dark:text-amber-300"><Lightbulb className="size-4" />{tr(`出力の調整理由（${notices.length}件）`, `Output adjustments (${notices.length})`)}</p>
+                <details className="mt-3 rounded-lg border border-border bg-card px-3">
+                  <summary className="py-3 text-sm font-semibold">{tr(`出力の調整理由（${notices.length}件）`, `Output adjustments (${notices.length})`)}</summary>
                   <ul className="mt-3 space-y-2">
                     {notices.map((notice) => (
-                      <li key={notice.id} className="rounded-xl bg-card/70 p-3 text-sm">
+                      <li key={notice.id} className="rounded-lg bg-card/70 p-3 text-sm">
                         <p className="font-semibold">{language === 'ja' ? notice.labelJa : notice.labelEn}</p>
                         <p className="mt-1 text-muted-foreground">{language === 'ja' ? notice.reasonJa : notice.reasonEn}</p>
                       </li>
                     ))}
                   </ul>
-                </div>
+                </details>
               )}
 
               {hasUserCustomInput && (
-                <div className="mt-3 rounded-2xl border border-amber-500/20 bg-amber-500/8 p-3.5">
+                <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/8 p-3.5">
                   <p className="flex items-center gap-2 text-sm font-bold text-amber-800 dark:text-amber-300"><Lightbulb className="size-3.5" />{tr('自由入力も末尾に保持します', 'Custom text is preserved')}</p>
                   <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{tr(draft.purpose === 'background' ? '背景用途では人物の自由入力を除き、画風・背景・配置・必須／希望条件を出力します。' : '既知の語句は端末内辞書で英語化し、未変換部分は原文のまま残して上で知らせます。', draft.purpose === 'background' ? 'Background mode excludes person notes and includes style, scene, layout, and required/preferred directions.' : 'Known phrases are translated locally; untranslated Japanese remains as entered and is flagged above.')}</p>
                 </div>
               )}
 
-              <div className="mt-3 rounded-2xl border border-primary/15 bg-primary/[0.055] p-4">
+              <div className="mt-3 rounded-lg border border-primary/15 bg-primary/[0.055] p-4">
                 <p className="flex items-center gap-2 text-sm font-bold text-primary"><Sparkles className="size-3.5" />{tr('入力はこのブラウザだけに保存', 'Saved only in this browser')}</p>
                 <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{tr('入力内容はこの端末内だけに保存され、サーバーや外部AIへ送信されません。', 'Your entries stay in local browser storage and are not sent to a server or external AI.')}</p>
               </div>
-              <Button variant="ghost" size="sm" className="mt-3 min-h-11 w-full rounded-xl xl:hidden" onClick={returnToEditing}>{tr('編集していた場所へ戻る', 'Return to where you were editing')}</Button>
+              <Button variant="ghost" size="sm" className="mt-3 min-h-11 w-full rounded-lg xl:hidden" onClick={returnToEditing}>{tr('編集していた場所へ戻る', 'Return to where you were editing')}</Button>
             </div>
           </aside>
         </div>
 
         {preferences.guidedMode ? (
-          <div className="fixed bottom-4 left-1/2 z-30 grid w-[min(94vw,420px)] -translate-x-1/2 grid-cols-[auto_1fr] gap-2 rounded-2xl border border-border bg-card/95 p-2 shadow-xl backdrop-blur sm:hidden">
-            <Button variant="outline" className="min-h-11 rounded-xl" disabled={guidedStepIndex === 0} onClick={() => moveGuidedStep(-1)}>{tr('戻る', 'Back')}</Button>
-            <Button className="min-h-11 rounded-xl" onClick={() => moveGuidedStep(1)}>
+          <div className="fixed bottom-4 left-1/2 z-30 grid w-[min(94vw,420px)] -translate-x-1/2 grid-cols-[auto_1fr] gap-2 rounded-lg border border-border bg-card/95 p-2 shadow-none backdrop-blur sm:hidden">
+            <Button variant="outline" className="min-h-11 rounded-lg" disabled={guidedStepIndex === 0} onClick={() => moveGuidedStep(-1)}>{tr('戻る', 'Back')}</Button>
+            <Button className="min-h-11 rounded-lg" onClick={() => moveGuidedStep(1)}>
               {nextGuidedStepMeta
                 ? tr(`次へ：${nextGuidedStepMeta.labelJa}`, `Next: ${nextGuidedStepMeta.labelEn}`)
                 : tr('指示書を確認', 'Review brief')}
             </Button>
           </div>
         ) : previewInView ? (
-          <Button className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] left-1/2 z-30 min-h-11 w-[min(92vw,360px)] -translate-x-1/2 gap-2 rounded-2xl shadow-xl xl:hidden" onClick={returnToEditing}>{tr('編集していた場所へ戻る', 'Back to your edit')}</Button>
+          <Button className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] left-1/2 z-30 min-h-11 w-[min(92vw,360px)] -translate-x-1/2 gap-2 rounded-lg shadow-none xl:hidden" onClick={returnToEditing}>{tr('編集していた場所へ戻る', 'Back to your edit')}</Button>
         ) : editorMode === 'form' ? (
           <Button
-            className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] left-1/2 z-30 min-h-11 w-[min(92vw,360px)] -translate-x-1/2 gap-2 rounded-2xl shadow-xl xl:hidden"
+            className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] left-1/2 z-30 min-h-11 w-[min(92vw,360px)] -translate-x-1/2 gap-2 rounded-lg shadow-none xl:hidden"
             onClick={showPreview}
           >
             <FileText className="size-4" />{tr('プレビューを見る', 'View preview')}
@@ -2203,8 +2193,8 @@ export function CharacterStudio() {
         <DialogContent className="flex max-h-[90dvh] flex-col overflow-hidden sm:max-w-2xl">
           <DialogHeader><DialogTitle>{tr('コピーする内容を確認', 'Review before copying')}</DialogTitle><DialogDescription>{pendingCopy?.label}</DialogDescription></DialogHeader>
           <div className="min-h-0 space-y-3 overflow-y-auto overscroll-contain">
-            <p className="rounded-xl bg-muted p-3 text-sm font-semibold">{pendingCopy?.scope}</p>
-            {copyChecks.length > 0 && <div className="rounded-xl border border-amber-500/30 p-3 text-sm"><p className="font-bold">{tr('確認事項（コピーは続行できます）', 'Review notes (copying is still allowed)')}</p><ul className="mt-2 space-y-2">{copyChecks.map((check) => <li key={check.id}>{check[language]}</li>)}</ul></div>}
+            <p className="rounded-lg bg-muted p-3 text-sm font-semibold">{pendingCopy?.scope}</p>
+            {copyChecks.length > 0 && <div className="rounded-lg border border-amber-500/30 p-3 text-sm"><p className="font-bold">{tr('確認事項（コピーは続行できます）', 'Review notes (copying is still allowed)')}</p><ul className="mt-2 space-y-2">{copyChecks.map((check) => <li key={check.id}>{check[language]}</li>)}</ul></div>}
             <p className="text-sm">{tr('言語：', 'Language: ')}{pendingCopy && /[\u3040-\u30ff\u3400-\u9fff]/u.test(pendingCopy.text) ? /[a-z]{3}/i.test(pendingCopy.text) ? tr('日本語を含む（下の原文を確認）', 'Includes Japanese (review text below)') : '日本語' : 'English'} · {pendingCopy?.text.length.toLocaleString()} {tr('文字', 'characters')}</p>
             <Textarea readOnly value={pendingCopy?.text ?? ''} aria-label={tr('コピーする原文', 'Exact text to copy')} className="min-h-64 text-sm" />
           </div>
@@ -2221,13 +2211,13 @@ export function CharacterStudio() {
           </DialogHeader>
           <div className="shrink-0 border-b border-border bg-muted/25 p-4">
             <div className="flex flex-wrap items-center gap-2">
-              <Button variant="outline" size="sm" className="min-h-11 gap-2 rounded-xl bg-card" onClick={exportData}><Download className="size-4" />{tr('完全バックアップ', 'Full backup')}</Button>
-              <Button variant="outline" size="sm" className="min-h-11 gap-2 rounded-xl bg-card" onClick={() => importInputRef.current?.click()}><Upload className="size-4" />{tr('JSON読込', 'Import JSON')}</Button>
-              <Button variant="outline" size="sm" className="min-h-11 gap-2 rounded-xl bg-card" onClick={copyShareLink}><Link2 className="size-4" />{tr('共有リンク', 'Share link')}</Button>
+              <Button variant="outline" size="sm" className="min-h-11 gap-2 rounded-lg bg-card" onClick={exportData}><Download className="size-4" />{tr('完全バックアップ', 'Full backup')}</Button>
+              <Button variant="outline" size="sm" className="min-h-11 gap-2 rounded-lg bg-card" onClick={() => importInputRef.current?.click()}><Upload className="size-4" />{tr('JSON読込', 'Import JSON')}</Button>
+              <Button variant="outline" size="sm" className="min-h-11 gap-2 rounded-lg bg-card" onClick={copyShareLink}><Link2 className="size-4" />{tr('共有リンク', 'Share link')}</Button>
               <input ref={importInputRef} type="file" accept="application/json,.json" className="sr-only" onChange={(event) => void importData(event.target.files?.[0])} />
               <p className="basis-full text-sm leading-relaxed text-muted-foreground">{tr('入力・プリセット・履歴・お気に入り・表示設定・メモ下書きをまとめて保存します。別端末への移行は、このJSONを読み込んでください。ファイルには未公開の設定も含まれます。', 'Back up settings, presets, history, favorites, preferences, and note drafts. Import this JSON on another device. It can contain unpublished material.')}</p>
               {recoveryWorkspace && <Button variant="outline" className="min-h-11" onClick={() => setPendingImport({ name: tr('読込前の退避データ', 'Pre-import recovery data'), data: { current: recoveryWorkspace.current, presets: recoveryWorkspace.presets, workspace: recoveryWorkspace } })}>{tr('読込前の状態に戻す', 'Restore pre-import state')}</Button>}
-              <span className="ml-auto flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2">
+              <span className="ml-auto flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2">
                 <span className="text-sm font-semibold">{tr('かんたん', 'Simple')}</span>
                 <Switch disabled={preferences.guidedMode} checked={preferences.simpleMode} onCheckedChange={(checked) => setPreferences((current) => ({ ...current, simpleMode: Boolean(checked) }))} aria-label={tr('かんたん表示', 'Simple mode')} />
               </span>
@@ -2243,11 +2233,11 @@ export function CharacterStudio() {
               </TabsList>
             </div>
             <TabsContent value="presets" className="mt-0 min-h-0 flex-1 overflow-y-auto overscroll-contain p-5">
-              <div className="rounded-2xl border border-primary/20 bg-primary/[0.045] p-4">
+              <div className="rounded-lg border border-primary/20 bg-primary/[0.045] p-4">
                 <p className="text-sm font-bold">{tr('現在の設定を保存', 'Save current settings')}</p>
                 <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                  <Input aria-label={tr('プリセット名', 'Preset name')} value={presetName} onChange={(event) => setPresetName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') savePreset(); }} placeholder={tr('例：いつものWebtoon', 'e.g. My usual Webtoon style')} className="h-11 rounded-xl bg-card" maxLength={50} />
-                  <Button onClick={savePreset} className="min-h-11 w-full shrink-0 gap-2 rounded-xl sm:w-auto"><Save className="size-4" />{tr('保存', 'Save')}</Button>
+                  <Input aria-label={tr('プリセット名', 'Preset name')} value={presetName} onChange={(event) => setPresetName(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') savePreset(); }} placeholder={tr('例：いつものWebtoon', 'e.g. My usual Webtoon style')} className="h-11 rounded-lg bg-card" maxLength={50} />
+                  <Button onClick={savePreset} className="min-h-11 w-full shrink-0 gap-2 rounded-lg sm:w-auto"><Save className="size-4" />{tr('保存', 'Save')}</Button>
                 </div>
                 <label className="mt-3 grid gap-2 text-sm font-semibold">{tr('保存範囲', 'Save scope')}<Select value={presetScope} onValueChange={(value) => setPresetScope(value as typeof presetScope)}><SelectTrigger className="min-h-11 w-full"><SelectValue>{presetScope === 'all' ? tr('全体（全員＋共通設定）', 'Whole brief') : presetScope === 'person' ? tr('現在の人物テンプレート', 'Current-person template') : tr('現在の衣装テンプレート', 'Current-outfit template')}</SelectValue></SelectTrigger><SelectContent><SelectItem value="all">{tr('全体（全員＋共通設定）', 'Whole brief')}</SelectItem><SelectItem value="person">{tr('現在の人物テンプレート', 'Current-person template')}</SelectItem><SelectItem value="outfit">{tr('現在の衣装テンプレート', 'Current-outfit template')}</SelectItem></SelectContent></Select></label>
                 <label className="mt-3 grid gap-2 text-sm font-semibold">{tr('変更メモ（任意）', 'Version note (optional)')}<Input value={presetNote} maxLength={240} onChange={(event) => setPresetNote(event.target.value)} placeholder={tr('例：第2版・衣装を冬服へ', 'e.g. v2 — winter outfit')} className="min-h-11" /></label>
@@ -2257,10 +2247,10 @@ export function CharacterStudio() {
                 <div className="mb-3 flex flex-col gap-2 sm:flex-row">
                   <div className="relative min-w-0 flex-1">
                     <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input value={managerQuery} onChange={(event) => setManagerQuery(event.target.value)} aria-label={tr('プリセットを検索', 'Search presets')} placeholder={tr('名前・内容で検索', 'Search name or summary')} className="h-11 rounded-xl bg-card pl-9" />
+                    <Input value={managerQuery} onChange={(event) => setManagerQuery(event.target.value)} aria-label={tr('プリセットを検索', 'Search presets')} placeholder={tr('名前・内容で検索', 'Search name or summary')} className="h-11 rounded-lg bg-card pl-9" />
                   </div>
                   <Select value={presetSort} onValueChange={(value) => setPresetSort(value as typeof presetSort)}>
-                    <SelectTrigger aria-label={tr('プリセットの並び順', 'Preset sorting')} className="h-11 w-full rounded-xl bg-card sm:w-44">
+                    <SelectTrigger aria-label={tr('プリセットの並び順', 'Preset sorting')} className="h-11 w-full rounded-lg bg-card sm:w-44">
                       <SelectValue>{({
                         recent: tr('最近使った順', 'Recently used'),
                         used: tr('使用回数順', 'Most used'),
@@ -2276,14 +2266,14 @@ export function CharacterStudio() {
                 </div>
                 <p className="mb-2 text-xs font-bold tracking-[0.13em] text-muted-foreground">MY PRESETS</p>
                 {userPresets.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-border p-5 text-center text-sm text-muted-foreground">{tr('まだ保存したプリセットはありません。', 'No saved presets yet.')}</div>
+                  <div className="rounded-lg border border-dashed border-border p-5 text-center text-sm text-muted-foreground">{tr('まだ保存したプリセットはありません。', 'No saved presets yet.')}</div>
                 ) : sortedPresets.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-border p-5 text-center text-sm text-muted-foreground">{tr('検索条件に合うプリセットがありません。', 'No presets match your search.')}</div>
+                  <div className="rounded-lg border border-dashed border-border p-5 text-center text-sm text-muted-foreground">{tr('検索条件に合うプリセットがありません。', 'No presets match your search.')}</div>
                 ) : (
                   <div className="space-y-2">
                     {sortedPresets.map((preset) => (
-                      <div key={preset.id} className="flex flex-col items-stretch gap-3 rounded-2xl border border-border bg-card p-3 sm:flex-row sm:items-center">
-                        <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">{preset.pinned ? <Pin className="size-4" /> : <Bookmark className="size-4" />}</span>
+                      <div key={preset.id} className="flex flex-col items-stretch gap-3 rounded-lg border border-border bg-card p-3 sm:flex-row sm:items-center">
+                        <span className="grid size-11 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">{preset.pinned ? <Pin className="size-4" /> : <Bookmark className="size-4" />}</span>
                         <div className="min-w-0 flex-1"><p className="truncate text-sm font-bold">{preset.name}</p><Badge variant="outline">{preset.scope === 'outfit' ? tr('衣装', 'Outfit') : preset.scope === 'person' ? tr('人物', 'Person') : tr('全体', 'Whole brief')}</Badge><p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{snapshotSummary(preset.snapshot, language)}</p>{preset.note && <p className="mt-1 break-words text-sm">{preset.note}</p>}<p className="mt-1 text-xs text-muted-foreground">{formatDate(preset.lastUsedAt ?? preset.updatedAt)} · {tr(`${preset.useCount ?? 0}回使用`, `used ${preset.useCount ?? 0} times`)}</p></div>
                         <div className="flex flex-wrap items-center justify-end gap-1">
                           <Button variant="ghost" size="icon" aria-label={tr(preset.pinned ? 'ピン留めを外す' : 'ピン留め', preset.pinned ? 'Unpin preset' : 'Pin preset')} onClick={() => togglePresetPin(preset)}>{preset.pinned ? <PinOff className="size-4" /> : <Pin className="size-4" />}</Button>
@@ -2291,7 +2281,7 @@ export function CharacterStudio() {
                           <Button variant="ghost" size="icon" aria-label={tr('複製', 'Duplicate')} onClick={() => duplicatePreset(preset)}><CopyPlus className="size-4" /></Button>
                           <Button variant="ghost" size="icon" aria-label={tr('削除', 'Delete')} className="text-destructive" onClick={() => deletePreset(preset)}><Trash2 className="size-4" /></Button>
                           <Button variant="outline" className="min-h-11" onClick={() => { setTemplateSource({ snapshot: preset.snapshot, name: preset.name, outfit: true }); setManagerOpen(false); }}>{tr('衣装だけ反映', 'Apply outfit only')}</Button>
-                          <Button size="sm" className="ml-1 min-h-11 gap-1.5 rounded-xl" onClick={() => loadPreset(preset)}><FolderOpen className="size-4" />{tr('読込', 'Load')}</Button>
+                          <Button size="sm" className="ml-1 min-h-11 gap-1.5 rounded-lg" onClick={() => loadPreset(preset)}><FolderOpen className="size-4" />{tr('読込', 'Load')}</Button>
                         </div>
                       </div>
                     ))}
@@ -2303,9 +2293,9 @@ export function CharacterStudio() {
                 <p className="mb-2 text-xs font-bold tracking-[0.13em] text-muted-foreground">STARTER PRESETS</p>
                 <div className="grid gap-2 sm:grid-cols-2">
                   {builtInPresets.map((preset) => (
-                    <div key={preset.id} className="rounded-2xl border border-border bg-card p-3.5">
+                    <div key={preset.id} className="rounded-lg border border-border bg-card p-3.5">
                       <div className="flex items-start justify-between gap-2"><div><Badge variant="secondary">{tr('初期プリセット', 'Starter preset')}</Badge><p className="mt-2 text-sm font-bold">{language === 'ja' ? preset.name : builtInPresetNamesEn[preset.id] ?? preset.name}</p><p className="mt-1 text-sm text-muted-foreground">{snapshotSummary(preset.snapshot, language)}</p></div><Sparkles className="size-4 text-primary" /></div>
-                      <div className="mt-3 flex gap-2"><Button variant="outline" size="sm" className="min-h-11 flex-1 gap-1.5 rounded-xl" onClick={() => duplicatePreset(preset)}><CopyPlus className="size-4" />{tr('複製', 'Duplicate')}</Button><Button size="sm" className="min-h-11 flex-1 gap-1.5 rounded-xl" onClick={() => loadPreset(preset)}><FolderOpen className="size-4" />{tr('読込', 'Load')}</Button></div>
+                      <div className="mt-3 flex gap-2"><Button variant="outline" size="sm" className="min-h-11 flex-1 gap-1.5 rounded-lg" onClick={() => duplicatePreset(preset)}><CopyPlus className="size-4" />{tr('複製', 'Duplicate')}</Button><Button size="sm" className="min-h-11 flex-1 gap-1.5 rounded-lg" onClick={() => loadPreset(preset)}><FolderOpen className="size-4" />{tr('読込', 'Load')}</Button></div>
                     </div>
                   ))}
                 </div>
@@ -2315,20 +2305,20 @@ export function CharacterStudio() {
             <TabsContent value="history" className="mt-0 min-h-0 flex-1 overflow-y-auto overscroll-contain p-5">
               <div className="relative mb-3">
                 <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input value={managerQuery} onChange={(event) => setManagerQuery(event.target.value)} aria-label={tr('履歴を検索', 'Search history')} placeholder={tr('操作名・内容で検索', 'Search action or summary')} className="h-11 rounded-xl bg-card pl-9" />
+                <Input value={managerQuery} onChange={(event) => setManagerQuery(event.target.value)} aria-label={tr('履歴を検索', 'Search history')} placeholder={tr('操作名・内容で検索', 'Search action or summary')} className="h-11 rounded-lg bg-card pl-9" />
               </div>
               {historyItems.length === 0 ? (
-                <div className="grid min-h-48 place-items-center rounded-2xl border border-dashed border-border text-center"><div><History className="mx-auto size-7 text-muted-foreground/45" /><p className="mt-3 text-sm font-bold">{tr('履歴はまだありません', 'No history yet')}</p><p className="mt-1 text-sm text-muted-foreground">{tr('編集・生成・コピー・読込を最大50件保存します。', 'Up to 50 edits, generations, copies, and loads are saved.')}</p></div></div>
+                <div className="grid min-h-48 place-items-center rounded-lg border border-dashed border-border text-center"><div><History className="mx-auto size-7 text-muted-foreground/45" /><p className="mt-3 text-sm font-bold">{tr('履歴はまだありません', 'No history yet')}</p><p className="mt-1 text-sm text-muted-foreground">{tr('編集・生成・コピー・読込を最大50件保存します。', 'Up to 50 edits, generations, copies, and loads are saved.')}</p></div></div>
               ) : filteredHistory.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-border p-5 text-center text-sm text-muted-foreground">{tr('検索条件に合う履歴がありません。', 'No history matches your search.')}</div>
+                <div className="rounded-lg border border-dashed border-border p-5 text-center text-sm text-muted-foreground">{tr('検索条件に合う履歴がありません。', 'No history matches your search.')}</div>
               ) : (
                 <div className="space-y-2">
                   {filteredHistory.map((item) => (
-                    <div key={item.id} className="flex items-center gap-2 rounded-2xl border border-border bg-card p-2">
+                    <div key={item.id} className="flex items-center gap-2 rounded-lg border border-border bg-card p-2">
                       <Button variant="ghost" size="icon" aria-label={tr(item.pinned ? '履歴のピン留めを外す' : '履歴をピン留め', item.pinned ? 'Unpin history item' : 'Pin history item')} onClick={() => toggleHistoryPin(item)}>{item.pinned ? <PinOff className="size-4" /> : <Pin className="size-4" />}</Button>
                       <Button variant="ghost" size="icon" aria-label={tr('履歴に名前を付ける', 'Name history item')} onClick={() => renameHistory(item)}><Pencil className="size-4" /></Button>
-                      <button type="button" onClick={() => loadSnapshot(item.snapshot, tr(`履歴「${item.label}」を復元`, `Restored history “${item.label}”`))} className="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-xl p-2 text-left transition hover:bg-accent/35">
-                        <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-muted text-muted-foreground"><History className="size-4" /></span>
+                      <button type="button" onClick={() => loadSnapshot(item.snapshot, tr(`履歴「${item.label}」を復元`, `Restored history “${item.label}”`))} className="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-lg p-2 text-left transition hover:bg-accent/35">
+                        <span className="grid size-11 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground"><History className="size-4" /></span>
                         <span className="min-w-0 flex-1"><span className="block truncate text-sm font-bold">{item.name ?? item.label}</span><span className="mt-1 block line-clamp-1 text-sm text-muted-foreground">{snapshotSummary(item.snapshot, language)}</span>{item.note && <span className="mt-1 block break-words text-sm">{item.note}</span>}<span className="mt-1 block text-xs text-muted-foreground">{formatDate(item.createdAt)}</span></span>
                         <ChevronRight className="size-4 text-muted-foreground" />
                       </button>
@@ -2373,13 +2363,13 @@ export function CharacterStudio() {
             <DialogDescription className="text-sm">{tr('始め方はあとから自由に変更できます。入力はこのブラウザだけに保存されます。', 'You can change anything later. Your entries remain in this browser.')}</DialogDescription>
           </DialogHeader>
           <div className="grid gap-3 sm:grid-cols-3">
-            <button type="button" onClick={() => finishOnboarding('random')} className="min-h-36 rounded-2xl border border-primary/25 bg-primary/[0.06] p-4 text-left transition hover:border-primary">
+            <button type="button" onClick={() => finishOnboarding('random')} className="min-h-36 rounded-lg border border-primary/25 bg-primary/[0.06] p-4 text-left transition hover:border-primary">
               <Dices className="size-6 text-primary" /><span className="mt-3 block text-base font-bold">{tr('おまかせで開始', 'Start randomly')}</span><span className="mt-2 block text-sm text-muted-foreground">{tr('まとまった案をすぐ作る', 'Generate a coherent concept now')}</span>
             </button>
-            <button type="button" onClick={() => finishOnboarding('purpose')} className="min-h-36 rounded-2xl border border-border bg-card p-4 text-left transition hover:border-primary">
+            <button type="button" onClick={() => finishOnboarding('purpose')} className="min-h-36 rounded-lg border border-border bg-card p-4 text-left transition hover:border-primary">
               <Sparkles className="size-6 text-primary" /><span className="mt-3 block text-base font-bold">{tr('用途から選ぶ', 'Choose a purpose')}</span><span className="mt-2 block text-sm text-muted-foreground">{tr('アイコン・立ち絵などから開始', 'Start with an icon, standing art, and more')}</span>
             </button>
-            <button type="button" onClick={() => finishOnboarding('blank')} className="min-h-36 rounded-2xl border border-border bg-card p-4 text-left transition hover:border-primary">
+            <button type="button" onClick={() => finishOnboarding('blank')} className="min-h-36 rounded-lg border border-border bg-card p-4 text-left transition hover:border-primary">
               <FileText className="size-6 text-primary" /><span className="mt-3 block text-base font-bold">{tr('一から順に作る', 'Build step by step')}</span><span className="mt-2 block text-sm text-muted-foreground">{tr('すべて空欄にして用途から決める', 'Clear everything and start with purpose')}</span>
             </button>
           </div>
@@ -2456,7 +2446,7 @@ export function CharacterStudio() {
                   },
                   {
                     title: tr('始め方を選ぶ', 'Choose how to start'),
-                    body: tr('「3項目で始める」は用途・人数・画風だけ選んで確認。「一から順に作る」では現在の人物／全員／すべてのリセット範囲を選べます。設定メモは保持し、フォームは履歴や元に戻すで復元できます。', 'Quick start asks only for purpose, people, and style. Build step by step lets you reset one person, all people, or everything. Notes are retained; restore settings with history or Undo.'),
+                    body: tr('「3項目で始める」は用途・人数・画風だけ選んで確認。「作成オプション」を開くとテーマ・4案・ギャップ・一から順に作るを使えます。リセットは範囲を選んで確認し、メモは保持されます。', 'Quick start asks only for purpose, people, and style. Expand Creation options for themes, four ideas, contrast, or a blank start. Resets require scope confirmation and retain note drafts.'),
                   },
                   {
                     title: tr('メモ・表情・ポーズを人物別に管理', 'Separate notes, expressions, and poses'),
@@ -2483,7 +2473,7 @@ export function CharacterStudio() {
                     body: tr('プレビューで形式を選び、コピー前に範囲と言語・原文を確認します。複数人は共通部分と各人物を別々にコピーできます。未変換の原文から該当入力へ移動して直せます。', 'Choose a format and review its scope, language, and exact text before copying. Copy shared and individual blocks separately; untranslated text links back to the relevant input.'),
                   },
                 ].map((item, index) => (
-                  <li key={item.title} className="rounded-2xl border border-border bg-card p-4">
+                  <li key={item.title} className="rounded-lg border border-border bg-card p-4">
                     <div className="flex items-start gap-3">
                       <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary/10 text-sm font-bold text-primary" aria-hidden="true">{index + 1}</span>
                       <div><h3 className="text-sm font-bold">{item.title}</h3><p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{item.body}</p></div>
@@ -2491,7 +2481,7 @@ export function CharacterStudio() {
                   </li>
                 ))}
               </ol>
-              <div className="mt-4 rounded-2xl border border-primary/15 bg-primary/[0.055] p-4">
+              <div className="mt-4 rounded-lg border border-primary/15 bg-primary/[0.055] p-4">
                 <p className="flex items-center gap-2 text-sm font-bold text-primary"><Lock className="size-4" />{tr('入力はこのブラウザ内に保存', 'Saved in this browser')}</p>
                 <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{tr('入力内容は外部AIへ自動送信されません。共有前に自由入力を含めるか選べます。メモ下書きや履歴は共有リンクに含みませんが、URLを知っている人は内容を読めます。リンクは暗号化されず、後から無効化もできません。', 'Entries are not automatically sent to an external AI. Choose which custom text to include before sharing. Note drafts and history are excluded, but anyone with the URL can read the shared settings. Links are not encrypted and cannot be revoked.')}</p>
                 <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{tr('自動保存は端末・ブラウザ・サイトごとです。ブラウザのデータ削除では失われるため、大切な設定は完全バックアップを保存してください。別タブの更新を検出すると上書きを防ぐため保存を停止します。', 'Autosave is specific to this device, browser, and site. Clearing browser data removes it; keep full backups of important work. If another tab updates the workspace, autosave pauses to prevent overwriting it.')}</p>
@@ -2527,7 +2517,7 @@ export function CharacterStudio() {
             <ol className="space-y-3">
               {releaseNotes.map((note, index) => (
                 <li key={`${note.date}-${note.titleJa}`}>
-                  <article className="rounded-2xl border border-border bg-card p-4 sm:p-5">
+                  <article className="rounded-lg border border-border bg-card p-4 sm:p-5">
                     <div className="flex flex-wrap items-center gap-2">
                       <time dateTime={note.date} className="text-sm font-bold text-muted-foreground">{note.date.replaceAll('-', '.')}</time>
                       {index === 0 && <Badge>{tr('最新', 'Latest')}</Badge>}
@@ -2552,8 +2542,8 @@ export function CharacterStudio() {
             <DialogDescription>{tr('リンクを知っている人は設定を読めます。暗号化やアクセス制限はありません。', 'Anyone with the link can read the settings. It is not encrypted or access-restricted.')}</DialogDescription>
           </DialogHeader>
           <div className="min-h-0 space-y-4 overflow-y-auto overscroll-contain">
-            <p className="rounded-xl bg-muted p-3 text-sm">{tr('選択した項目を共有します。メモ下書き・履歴・プリセット・ロック・ギャップの変更履歴は含めません。自由入力は初期状態では除外します。', 'Selected settings are shared. Note drafts, history, presets, locks, and contrast provenance are excluded. Custom text is excluded by default.')}</p>
-            <fieldset className="space-y-2 rounded-xl border border-border p-3">
+            <p className="rounded-lg bg-muted p-3 text-sm">{tr('選択した項目を共有します。メモ下書き・履歴・プリセット・ロック・ギャップの変更履歴は含めません。自由入力は初期状態では除外します。', 'Selected settings are shared. Note drafts, history, presets, locks, and contrast provenance are excluded. Custom text is excluded by default.')}</p>
+            <fieldset className="space-y-2 rounded-lg border border-border p-3">
               <legend className="px-1 font-semibold">{tr('共有に含める自由入力', 'Custom text to include')}</legend>
               {(!shareSource || shareCustomEntries(shareSource).length === 0) && <p className="text-sm text-muted-foreground">{tr('自由入力はありません。', 'No custom text.')}</p>}
               {(shareSource ? shareCustomEntries(shareSource, language) : []).map(({ key, label, value }) => <label key={key} className="flex min-h-11 cursor-pointer items-start gap-3 rounded-lg p-2 hover:bg-muted">
@@ -2562,8 +2552,8 @@ export function CharacterStudio() {
               </label>)}
             </fieldset>
             {sharedSnapshot && <>
-              <section className="rounded-xl border border-border p-3"><h3 className="font-semibold">{tr('共有内容のプレビュー', 'Shared brief preview')}</h3><p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed">{generatePrompts(sharedSnapshot.draft)[language === 'ja' ? 'ja' : 'en'] || tr('未設定', 'Not set')}</p></section>
-              <details className="rounded-xl border border-border p-3"><summary className="min-h-11 cursor-pointer font-semibold">{tr('共有される設定をすべて確認', 'Review all included settings')}</summary><ChangeList changes={diffSnapshots(createBlankSnapshot(), sharedSnapshot)} language={language} /></details>
+              <section className="rounded-lg border border-border p-3"><h3 className="font-semibold">{tr('共有内容のプレビュー', 'Shared brief preview')}</h3><p className="mt-2 whitespace-pre-wrap break-words text-sm leading-relaxed">{generatePrompts(sharedSnapshot.draft)[language === 'ja' ? 'ja' : 'en'] || tr('未設定', 'Not set')}</p></section>
+              <details className="rounded-lg border border-border p-3"><summary className="min-h-11 cursor-pointer font-semibold">{tr('共有される設定をすべて確認', 'Review all included settings')}</summary><ChangeList changes={diffSnapshots(createBlankSnapshot(), sharedSnapshot)} language={language} /></details>
             </>}
             <p className="text-sm text-muted-foreground">{tr('リンクは現在の設定のコピーです。後から編集しても共有済みの内容は変わらず、リンクを無効化することもできません。', 'The link is a snapshot. Later edits do not update an existing link, and links cannot be revoked.')}</p>
             {shareUrl.length <= MAX_SHARE_URL_LENGTH && <label className="block text-sm font-semibold">{tr('共有リンク（手動コピーもできます）', 'Share link (also available for manual copy)')}<Textarea readOnly value={shareUrl} className="mt-2 min-h-20 break-all font-mono text-sm" onFocus={(event) => event.target.select()} /></label>}
@@ -2609,7 +2599,7 @@ export function CharacterStudio() {
             <Button variant="ghost" size="icon" className="absolute right-3 top-3" onClick={() => setBatchOpen(false)} aria-label={tr('閉じる', 'Close')}><X className="size-4" /></Button>
           </DialogHeader>
           <div className="grid min-h-0 gap-3 overflow-y-auto p-5 sm:grid-cols-2">
-            {batchBase && <details className="min-w-0 rounded-xl border border-border p-3 sm:col-span-2">
+            {batchBase && <details className="min-w-0 rounded-lg border border-border p-3 sm:col-span-2">
               <summary className="min-h-11 cursor-pointer font-semibold">{tr('4案を表で比較（変更のある全項目）', 'Compare all changed fields across four ideas')}</summary>
               <p className="pb-2 text-xs text-muted-foreground">{tr('横にスクロールすると、4案すべてを確認できます。', 'Scroll horizontally to see all four ideas.')}</p>
               <div className="overflow-x-auto" tabIndex={0} role="region" aria-label={tr('4案の比較表。横にスクロールできます', 'Four-idea comparison. Scroll horizontally')}>
@@ -2627,17 +2617,17 @@ export function CharacterStudio() {
               const changes = diffSnapshots(batchBase ?? makeSnapshot(), snapshot);
               const itemOutputs = generatePrompts(item);
               return (
-                <article key={`${index}-${JSON.stringify(item).slice(0, 60)}`} className="rounded-2xl border border-border bg-card p-4">
+                <article key={`${index}-${JSON.stringify(item).slice(0, 60)}`} className="rounded-lg border border-border bg-card p-4">
                   <div className="flex items-center justify-between"><Badge>{tr(`案 ${index + 1}`, `Idea ${index + 1}`)}</Badge><span className="text-sm text-muted-foreground">{tr(`${changes.length}項目変更`, `${changes.length} changes`)}</span></div>
                   <p className="mt-3 text-sm font-semibold">{snapshotSummary(snapshot, language)}</p>
                   <ul className="mt-3 space-y-1 text-sm text-muted-foreground">
                     {changes.slice(0, 4).map((change) => <li key={change.id}>{language === 'ja' ? change.labelJa : change.labelEn}: {language === 'ja' ? change.afterJa : change.afterEn}</li>)}
                   </ul>
-                  <details className="mt-3 rounded-xl border border-border p-3"><summary className="min-h-11 cursor-pointer text-sm font-semibold">{tr(`全${changes.length}件の変更前・変更後`, `Before and after for all ${changes.length} changes`)}</summary><ChangeList changes={changes} language={language} /></details>
-                  <details className="mt-2 rounded-xl border border-border p-3"><summary className="min-h-11 cursor-pointer text-sm font-semibold">{tr('採用前に指示書を確認', 'Preview the brief before adopting')}</summary><p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{itemOutputs[outputMode]}</p></details>
+                  <details className="mt-3 rounded-lg border border-border p-3"><summary className="min-h-11 cursor-pointer text-sm font-semibold">{tr(`全${changes.length}件の変更前・変更後`, `Before and after for all ${changes.length} changes`)}</summary><ChangeList changes={changes} language={language} /></details>
+                  <details className="mt-2 rounded-lg border border-border p-3"><summary className="min-h-11 cursor-pointer text-sm font-semibold">{tr('採用前に指示書を確認', 'Preview the brief before adopting')}</summary><p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{itemOutputs[outputMode]}</p></details>
                   <div className="mt-4 grid grid-cols-2 gap-2">
-                    <Button variant="outline" size="sm" className="min-h-11 rounded-xl" onClick={() => copyText(itemOutputs[outputMode], tr(`案${index + 1}をコピー`, `Copied idea ${index + 1}`), false)}><Clipboard className="size-4" />{tr('コピー', 'Copy')}</Button>
-                    <Button size="sm" className="min-h-11 rounded-xl" onClick={() => adoptBatch(item, index)}><Check className="size-4" />{tr('採用', 'Adopt')}</Button>
+                    <Button variant="outline" size="sm" className="min-h-11 rounded-lg" onClick={() => copyText(itemOutputs[outputMode], tr(`案${index + 1}をコピー`, `Copied idea ${index + 1}`), false)}><Clipboard className="size-4" />{tr('コピー', 'Copy')}</Button>
+                    <Button size="sm" className="min-h-11 rounded-lg" onClick={() => adoptBatch(item, index)}><Check className="size-4" />{tr('採用', 'Adopt')}</Button>
                   </div>
                 </article>
               );
