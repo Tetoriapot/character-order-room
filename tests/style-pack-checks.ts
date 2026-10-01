@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import './smooth-clean-checks';
 import { stylePresets } from '@/data/style-presets';
 import { antiAiBlocks } from '@/data/anti-ai-blocks';
 import { styleCategories, styleCompatibility, antiAiStrengths } from '@/data/style-categories';
@@ -16,11 +17,11 @@ import { diffSnapshots } from '@/lib/character-insights';
 import { commitEditorTimeline, createEditorTimeline, redoEditorTimeline, undoEditorTimeline } from '@/lib/editor-timeline';
 import { randomizeAll } from '@/lib/random-engine';
 
-assert.equal(stylePresets.length, 80);
-assert.equal(new Set(stylePresets.map((item) => item.id)).size, 80);
-assert.equal(antiAiBlocks.length, 30);
-assert.equal(new Set(antiAiBlocks.map((item) => item.id)).size, 30);
-assert.equal(styleCategories.length, 8);
+assert.equal(stylePresets.length, 104);
+assert.equal(new Set(stylePresets.map((item) => item.id)).size, 104);
+assert.equal(antiAiBlocks.length, 48);
+assert.equal(new Set(antiAiBlocks.map((item) => item.id)).size, 48);
+assert.equal(styleCategories.length, 9);
 for (const category of styleCategories) {
   assert.ok(stylePresets.some((item) => item.category === category.id));
   assert.equal(recommendAntiAiBlocks(category.id).length, 3);
@@ -106,7 +107,7 @@ const restored = parseStudioBackup(exportStudioBackup(workspace))!;
 assert.deepEqual(restored.current, snapshot);
 assert.deepEqual(restored.presets[0].snapshot, snapshot);
 assert.deepEqual(restored.history[0].snapshot, snapshot);
-assert.equal(restored.preferences.favoriteChoices.stylePack.length, 80);
+assert.equal(restored.preferences.favoriteChoices.stylePack.length, 104);
 const reset = createBlankSnapshot();
 assert.equal(reset.draft.stylePack, undefined);
 const changes = diffSnapshots(reset, { ...snapshot, draft: { ...snapshot.draft, stylePack: { ...selection, excludedBlocks: ['AVOID'] } } });
@@ -118,4 +119,4 @@ const randomized = randomizeAll(snapshot.draft, snapshot.locks, undefined, [], (
 assert.deepEqual(randomized.stylePack, selection);
 assert.notEqual(randomized.stylePack, selection, 'ランダム案と元入力が同じ参照を共有しない');
 assert.deepEqual(randomized.faceFeatures, []);
-console.log('Style pack checks passed: 80 styles, 30 helpers, block formats, persistence, sharing, diff, undo, reset.');
+console.log('Style pack checks passed: 104 styles, 48 helpers, block formats, persistence, sharing, diff, undo, reset.');

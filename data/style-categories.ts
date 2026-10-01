@@ -1,6 +1,7 @@
 import type { StyleCategory } from '@/lib/style-pack-types';
 
 export const styleCategories: { id: StyleCategory; nameJa: string; nameEn: string; weight: number }[] = [
+  { id: 'smooth_clean', nameJa: 'すっきり・なめらか', nameEn: 'Smooth / clean', weight: 1.20 },
   { id: 'hand_drawn', nameJa: '手描き', nameEn: 'Hand drawn', weight: 1.20 },
   { id: 'flat_editorial', nameJa: 'フラット・挿絵', nameEn: 'Flat / editorial', weight: 1.25 },
   { id: 'pop_character', nameJa: 'ポップ・キャラ', nameEn: 'Pop / character', weight: 1.10 },
@@ -12,6 +13,7 @@ export const styleCategories: { id: StyleCategory; nameJa: string; nameEn: strin
 ];
 
 export const styleCompatibility: Record<StyleCategory, string[]> = {
+  smooth_clean: ['anti_overdetailed_hair', 'smooth_surface_finish', 'restrained_ornament', 'anti_spiky_hair_ends', 'anti_flyaway_noise', 'face_over_hair_priority', 'simple_but_stylish', 'large_hair_clumps_prompt', 'soft_grouped_bangs', 'clean_silhouette_priority', 'controlled_highlights', 'balanced_face_refinement'],
   hand_drawn: ['subtle_paper_texture', 'line_irregularity_light', 'brush_trace', 'restrained_detail'],
   flat_editorial: ['gentle_asymmetry', 'imperfect_spacing', 'avoid_stock_feel', 'limited_palette_5', 'reduce_background_clutter'],
   pop_character: ['line_irregularity_light', 'avoid_overcute_polish', 'negative_space_boost'],

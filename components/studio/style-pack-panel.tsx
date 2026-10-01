@@ -3,7 +3,10 @@
 import { useMemo, useState } from 'react';
 import { Check, Dices, Search, Star, X } from 'lucide-react';
 import { antiAiBlocks } from '@/data/anti-ai-blocks';
+import { stylePresets } from '@/data/style-presets';
 import { antiAiStrengths, styleCategories } from '@/data/style-categories';
+import { automaticSmoothCleanHelpers, buildStylePrompt } from '@/lib/smooth-clean';
+import { SmoothCleanPanel } from './smooth-clean-panel';
 import type { UiLanguage } from '@/lib/character-types';
 import type { StyleCategory, StylePackSelection } from '@/lib/style-pack-types';
 import { addAntiAi, antiAiReplaces, emptyStylePack, filterStylePresets, findAntiAiBlock, findStylePreset, MAX_ANTI_AI, pickRandomStyle, recommendAntiAiBlocks, stylePackWarnings } from '@/lib/style-pack';
@@ -29,20 +32,28 @@ export function StylePackPanel({ selection, language, favorites, locked, onChang
   const style = findStylePreset(value.presetId);
   const [category, setCategory] = useState<StyleCategory | 'all'>('all');
   const [query, setQuery] = useState('');
+  const [helperQuery, setHelperQuery] = useState('');
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const presets = useMemo(() => filterStylePresets(query, category, favoritesOnly ? favorites : undefined), [query, category, favoritesOnly, favorites]);
   const recommendations = style ? recommendAntiAiBlocks(style.category) : [];
   const warnings = stylePackWarnings(value);
+  const automatic = automaticSmoothCleanHelpers(value.smoothClean);
+  const helperResults = antiAiBlocks.filter((block) => [block.nameJa, block.nameEn, block.intent, ...block.tags].join(' ').toLowerCase().includes(helperQuery.trim().toLowerCase()));
+  const strengths = style?.category === 'smooth_clean' ? {
+    weak: ['anti_overdetailed_hair', 'smooth_surface_finish'],
+    medium: ['anti_overdetailed_hair', 'smooth_surface_finish', 'restrained_ornament'],
+    strong: ['anti_overdetailed_hair', 'smooth_surface_finish', 'restrained_ornament', 'anti_spiky_hair_ends', 'anti_flyaway_noise'],
+  } : antiAiStrengths;
   const select = (presetId: string) => onChange({ ...value, presetId });
 
   return (
     <section className="min-w-0 space-y-4" aria-label={tr('画風ライブラリ', 'Style library')}>
       <div>
         <h3 className="font-bold">{style ? tr(style.nameJa, style.nameEn) : tr('画風ライブラリは未選択', 'No library style selected')}</h3>
-        <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{style ? tr('この画風を優先して出力します。従来の絵柄設定は保持されます。', 'This style takes priority in output. Classic settings are retained.') : tr('80種類から1つ選択。または下の絵柄設定で作れます。', 'Choose one of 80 styles, or use the classic settings below.')}</p>
+        <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{style ? tr('この画風を優先して出力します。従来の絵柄設定は保持されます。', 'This style takes priority in output. Classic settings are retained.') : tr(`${stylePresets.length}種類から1つ選択。または下の絵柄設定で作れます。`, `Choose one of ${stylePresets.length} styles, or use the classic settings below.`)}</p>
       </div>
       <details className="border-y border-border">
-      <summary className="py-3 text-sm font-semibold">{tr('画風を選ぶ・変更する（80種類）', 'Choose or change a style (80 styles)')}</summary>
+      <summary className="py-3 text-sm font-semibold">{tr(`画風を選ぶ・変更する（${stylePresets.length}種類）`, `Choose or change a style (${stylePresets.length} styles)`)}</summary>
       <div className="space-y-3 pb-3">
       <div className="flex flex-wrap gap-2">
         <label className="relative min-w-0 flex-1 basis-48">
@@ -87,7 +98,8 @@ export function StylePackPanel({ selection, language, favorites, locked, onChang
       {style && <details className="border-b border-border pb-3">
         <summary className="py-3 text-sm font-semibold">{tr('選択中の画風：指示文・保存・解除', 'Selected style: prompt, save, or clear')}</summary>
         <div className="space-y-3">
-        <p className="break-words text-sm leading-relaxed" lang="en">{style.stylePrompt}</p>
+        <p className="break-words text-sm leading-relaxed" lang="en">{buildStylePrompt(style, value.smoothClean)}</p>
+        {style.category === 'smooth_clean' && <p className="text-xs leading-relaxed text-muted-foreground">{tr('一部の画風は髪色・衣装・人物像の例を含みます。選択中の指示文を確認してください。人物の入力値は変更しません。', 'Some presets include example hair colors, outfits or character traits. Review the style text; your character inputs are not changed.')}</p>}
         <p className="text-xs leading-relaxed text-muted-foreground">{tr('選択中は、従来の絵柄・追加の雰囲気・絵柄の自由入力を出力しません（入力は保持）。人物のランダム生成でもこの画風は維持します。', 'While selected, classic style, style traits, and custom style text are retained but not output. Character randomization keeps this style.')}</p>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" className="min-h-11 rounded-lg" onClick={onPreview}>{tr('ブロックを確認', 'Preview blocks')}</Button>
@@ -96,9 +108,10 @@ export function StylePackPanel({ selection, language, favorites, locked, onChang
         </div>
         </div>
       </details>}
+      {style && <SmoothCleanPanel key={style.id} value={value.smoothClean} language={language} initiallyOpen={style.category === 'smooth_clean' || !!value.smoothClean} onChange={(smoothClean) => onChange({ ...value, smoothClean })} />}
       {warnings.map((warning) => <p key={warning.en} className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm" role="status">{tr(warning.ja, warning.en)}</p>)}
       {style && <details className="border-b border-border pb-3">
-        <summary className="py-3 text-sm font-semibold">{tr(`画風の補助を調整（${value.antiAiIds.length}/${MAX_ANTI_AI}）`, `Adjust style helpers (${value.antiAiIds.length}/${MAX_ANTI_AI})`)}</summary>
+        <summary className="py-3 text-sm font-semibold">{tr(`画風の補助を調整（手動 ${value.antiAiIds.length}/${MAX_ANTI_AI}・自動 ${automatic.length}）`, `Adjust style helpers (manual ${value.antiAiIds.length}/${MAX_ANTI_AI} · auto ${automatic.length})`)}</summary>
         <div className="space-y-3">
         <div>
           <h4 className="font-semibold">{tr('画風の補助', 'Style helpers')} <span className="ml-2 text-sm font-normal text-muted-foreground">ANTI_AI · {value.antiAiIds.length}/{MAX_ANTI_AI}</span></h4>
@@ -111,23 +124,26 @@ export function StylePackPanel({ selection, language, favorites, locked, onChang
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm text-muted-foreground">{tr('補助を置換：', 'Replace helpers: ')}</span>
-          {(['weak', 'medium', 'strong'] as const).map((level, index) => <Button key={level} variant="outline" className="min-h-11 rounded-lg" onClick={() => onChange({ ...value, antiAiIds: [...antiAiStrengths[level]] })}>{tr(['弱（2件）', '中（3件）', '強（5件）'][index], `${level} (${antiAiStrengths[level].length})`)}</Button>)}
-          <Button variant="ghost" className="min-h-11 rounded-lg" disabled={!value.antiAiIds.length} onClick={() => onChange({ ...value, antiAiIds: [] })}>{tr('補助を解除', 'Clear helpers')}</Button>
+          {(['weak', 'medium', 'strong'] as const).map((level, index) => <Button key={level} variant="outline" className="min-h-11 rounded-lg" onClick={() => onChange({ ...value, antiAiIds: [...strengths[level]] })}>{tr(['弱（2件）', '中（3件）', '強（5件）'][index], `${level} (${strengths[level].length})`)}</Button>)}
+          <Button variant="ghost" className="min-h-11 rounded-lg" disabled={!value.antiAiIds.length} onClick={() => onChange({ ...value, antiAiIds: [] })}>{tr('手動の補助を解除', 'Clear manual helpers')}</Button>
         </div>
         {!!value.antiAiIds.length && <div className="flex flex-wrap gap-2" aria-label={tr('選択中の補助', 'Selected helpers')}>
           {value.antiAiIds.map((id) => { const block = findAntiAiBlock(id); return block ? <Button key={id} variant="secondary" className="h-auto min-h-11 max-w-full whitespace-normal rounded-lg py-2 text-left" aria-label={tr(`${block.nameJa}を解除`, `Remove ${block.nameEn}`)} onClick={() => onChange({ ...value, antiAiIds: value.antiAiIds.filter((item) => item !== id) })}>{tr(block.nameJa, block.nameEn)}<X className="size-3.5" /></Button> : null; })}
         </div>}
         <details className="rounded-lg border border-border p-3">
-          <summary className="flex min-h-11 cursor-pointer items-center text-sm font-semibold">{tr(`補助30種から選ぶ・目的と注意を見る（${value.antiAiIds.length}件選択中）`, `Browse 30 helpers, intent and cautions (${value.antiAiIds.length} selected)`)}</summary>
+          <summary className="flex min-h-11 cursor-pointer items-center text-sm font-semibold">{tr(`補助${antiAiBlocks.length}種から選ぶ・目的と注意を見る（手動${value.antiAiIds.length}件）`, `Browse ${antiAiBlocks.length} helpers, intent and cautions (${value.antiAiIds.length} manual)`)}</summary>
+          <Input className="mb-3 min-h-11" value={helperQuery} onChange={(event) => setHelperQuery(event.target.value)} aria-label={tr('画風の補助を検索', 'Search style helpers')} placeholder={tr('名前・目的で検索', 'Search name or intent')} />
           <div className="max-h-96 space-y-2 overflow-y-auto overscroll-contain pr-1" tabIndex={0} role="region" aria-label={tr('画風の補助一覧', 'Style helper list')}>
-            {antiAiBlocks.map((block) => {
+            {helperResults.map((block) => {
               const selected = value.antiAiIds.includes(block.id);
-              const disabled = !selected && value.antiAiIds.length >= MAX_ANTI_AI && !value.antiAiIds.some((id) => antiAiReplaces(id, block.id));
+              const auto = automatic.includes(block.id);
+              const disabled = (!selected && auto) || (!selected && value.antiAiIds.length >= MAX_ANTI_AI && !value.antiAiIds.some((id) => antiAiReplaces(id, block.id)));
               return <label key={block.id} className={`flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border p-3 ${selected ? 'border-primary/40 bg-primary/5' : 'border-border'} ${disabled ? 'opacity-60' : ''}`}>
-                <Checkbox checked={selected} disabled={disabled} className="mt-1 shrink-0" onCheckedChange={() => onChange({ ...value, antiAiIds: selected ? value.antiAiIds.filter((id) => id !== block.id) : addAntiAi(value.antiAiIds, block.id) })} />
-                <span className="min-w-0 text-sm"><span className="block font-semibold">{tr(block.nameJa, block.nameEn)}</span><span className="mt-1 block text-muted-foreground">{block.intent}</span><span className="mt-1 block text-xs text-muted-foreground">{tr('注意：', 'Caution: ')}{block.caution}</span></span>
+                <Checkbox checked={selected || auto} disabled={disabled} className="mt-1 shrink-0" onCheckedChange={() => onChange({ ...value, antiAiIds: selected ? value.antiAiIds.filter((id) => id !== block.id) : addAntiAi(value.antiAiIds, block.id) })} />
+                <span className="min-w-0 text-sm"><span className="block font-semibold">{tr(block.nameJa, block.nameEn)}{auto && <span className="ml-2 text-xs font-normal text-primary">{tr('自動', 'Auto')}</span>}</span><span className="mt-1 block text-muted-foreground">{block.intent}</span><span className="mt-1 block text-xs text-muted-foreground">{tr('注意：', 'Caution: ')}{block.caution}</span></span>
               </label>;
             })}
+            {!helperResults.length && <p className="p-3 text-sm text-muted-foreground">{tr('一致する補助がありません。検索語を変更してください。', 'No matching helpers. Try another search.')}</p>}
           </div>
           <p className="mt-2 text-xs text-muted-foreground">{tr('線の強弱・紙の粗さ・版ズレ・色数の別案は、同種の設定を置き換えます。', 'Alternative line, paper, registration, and palette settings replace each other.')}</p>
         </details>

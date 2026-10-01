@@ -104,7 +104,7 @@ import {
 } from '@/lib/random-engine';
 import { analyzePromptNotices, formatProfileOutput } from '@/lib/prompt-engine';
 import { buildPromptBlocks, generateStudioPrompts as generatePrompts } from '@/lib/prompt-blocks';
-import { findStylePreset } from '@/lib/style-pack';
+import { effectiveStyleHelperIds, findStylePreset } from '@/lib/style-pack';
 import { isSceneComposition } from '@/data/camera-expansion';
 import { CharacterCastPanel } from './character-cast-panel';
 import { castRandomLocks, isCastActive, syncCast, PERSON_FIELDS, selectCastMember, setCastEnabled } from '@/lib/character-cast';
@@ -263,6 +263,11 @@ const outputTabs: Array<{ value: StudioOutputMode; labelJa: string; labelEn: str
 ];
 
 const releaseNotes = [
+  {
+    date: '2026-10-01', titleJa: '髪と装飾をすっきり整える追加パック', titleEn: 'Smooth / clean style add-on',
+    itemsJa: ['画風24種・補助18種を追加し、合計104種・48種に拡張しました。', '髪の描き込み量・毛束・毛先・装飾量・塗りを調整できます。連動する自動補助は手動5件と別枠で、保存・共有・元に戻すにも対応します。', '避けたい描写10種と補助の検索を追加。PC・スマホでも調整しやすく整理しました。'],
+    itemsEn: ['Added 24 styles and 18 helpers, for totals of 104 and 48.', 'Control hair detail, clumps, tips, ornament and finish. Automatic helpers are separate from the 5 manual slots, with save, share and undo support.', 'Added 10 rendering exclusions and helper search, with responsive controls for desktop and mobile.'],
+  },
   {
     date: '2026-09-19', titleJa: 'シンプルでフラットな編集画面', titleEn: 'A simpler, flatter workspace',
     itemsJa: ['装飾とカードの入れ子を減らし、入力欄・人物切替・出力を見分けやすく整理しました。', '人数の詳細・画風ライブラリ・作成オプション・サービス別出力は、必要なときに開けます。機能や保存内容はそのままです。', '狭い画面でも更新履歴・ヘルプ・保存を文字で表示。長い入力のはみ出しと、未入力欄の見出し表示を改善しました。'],
@@ -1902,7 +1907,7 @@ export function CharacterStudio() {
                   <div className="mt-4">{customField(tr('用途の補足・自由設定', 'Purpose notes'), 'purpose', tr('用途の補足・自由設定', 'Add purpose-specific notes'))}</div>
                 </StudioSection>
 
-                <StudioSection hidden={!displayedSectionIds.includes('style')} value="style" icon={<Palette />} eyebrow={sharedStep(2)} title={tr('絵柄と仕上げ', 'Style and finish')} summary={activeStylePreset ? tr(`${activeStylePreset.nameJa}・補助${draft.stylePack?.antiAiIds.length ?? 0}件`, `${activeStylePreset.nameEn} · ${draft.stylePack?.antiAiIds.length ?? 0} helpers`) : tr(`${labelFor('style', draft.style)}・${draft.styleTraits.length}個の追加要素`, `${englishFor('style', draft.style)} · ${draft.styleTraits.length} details`)}>
+                <StudioSection hidden={!displayedSectionIds.includes('style')} value="style" icon={<Palette />} eyebrow={sharedStep(2)} title={tr('絵柄と仕上げ', 'Style and finish')} summary={activeStylePreset ? tr(`${activeStylePreset.nameJa}・補助${effectiveStyleHelperIds(draft.stylePack).length}件`, `${activeStylePreset.nameEn} · ${effectiveStyleHelperIds(draft.stylePack).length} helpers`) : tr(`${labelFor('style', draft.style)}・${draft.styleTraits.length}個の追加要素`, `${englishFor('style', draft.style)} · ${draft.styleTraits.length} details`)}>
                   <StylePackPanel
                     selection={draft.stylePack}
                     language={language}
@@ -2466,7 +2471,7 @@ export function CharacterStudio() {
                   },
                   {
                     title: tr('画風と内容を分けて作る', 'Separate style and content'),
-                    body: tr('STEP 2の画風ライブラリで80種から1つ選び、補助30種を任意で追加します（1〜3件推奨、最大5件）。ブロックタブでコピー対象を切り替え、整形・1行・JSONでコピーできます。テンプレ保存は人物設定も一緒に保存します。解除すれば保持していた従来の絵柄に戻ります。', 'Choose one of 80 styles in STEP 2 and optionally add helpers (1–3 recommended, maximum 5). The Blocks tab offers inclusion toggles and formatted, one-line, or JSON copy. Templates save the character settings too. Clearing the style restores classic inputs.'),
+                    body: tr('STEP 2で104種から画風を選び、補助48種から手動で追加します（1〜3件推奨、最大5件）。髪・装飾・塗りの5項目から付く自動補助は別枠です。調整を未指定に戻しても手動の補助は残ります。避けたい描写はネガティブ／AVOIDへ反映。ブロックは整形・1行・JSONでコピーできます。調整は保存・共有・元に戻すに対応し、複数人物では全員共通です。', 'Choose from 104 styles and 48 helpers in STEP 2 (1–3 manual helpers recommended, maximum 5). Five rendering controls add automatic helpers separately. Unsetting a control retains manual selections. Rendering exclusions go to Negative / AVOID. Copy blocks formatted, on one line, or as JSON. Controls support saving, sharing and undo, and apply to everyone in group mode.'),
                   },
                   {
                     title: tr('形式を選んでコピー', 'Choose a format and copy'),
@@ -2489,7 +2494,7 @@ export function CharacterStudio() {
             </TabsContent>
             <TabsContent value="shortcuts" className="mt-0 min-h-0 overflow-y-auto px-5 pb-5 pt-4 overscroll-contain">
               <p className="mb-4 text-sm leading-relaxed text-muted-foreground">{tr('入力欄の編集中や日本語変換中は発動しません。', 'Shortcuts are disabled while editing text or using an IME.')}</p>
-              <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-3 text-sm">
+              <dl className="space-y-3 text-sm">
                 {[
                   [tr('おまかせ', 'Randomize'), 'Ctrl/⌘ + Enter'],
                   [tr('ギャップ生成', 'Generate contrast'), 'Ctrl/⌘ + Shift + Enter'],
@@ -2498,7 +2503,7 @@ export function CharacterStudio() {
                   [tr('現在の出力をコピー', 'Copy current output'), 'Alt + C'],
                   [tr('カテゴリへ移動', 'Jump to category'), 'Alt + 1…9'],
                   [tr('ショートカット一覧を開く', 'Open the shortcut list'), '?'],
-                ].map(([label, key]) => <div key={key} className="contents"><dt>{label}</dt><dd className="rounded-md bg-muted px-2 py-1 font-mono font-semibold">{key}</dd></div>)}
+                ].map(([label, key]) => <div key={key} className="grid min-w-0 gap-1 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-x-4"><dt className="min-w-0 break-words">{label}</dt><dd className="min-w-0 break-words rounded-md bg-muted px-2 py-1 font-mono font-semibold">{key}</dd></div>)}
               </dl>
             </TabsContent>
           </Tabs>
@@ -2513,7 +2518,7 @@ export function CharacterStudio() {
             <DialogDescription>{tr('主な追加・変更を新しい順に掲載しています。', 'Major additions and changes, newest first.')}</DialogDescription>
             <Button variant="ghost" size="icon" className="absolute right-3 top-3 min-h-11 min-w-11" onClick={() => setChangelogOpen(false)} aria-label={tr('閉じる', 'Close')}><X className="size-4" /></Button>
           </DialogHeader>
-          <section aria-label={tr('更新内容', 'Release notes')} className="min-h-0 flex-1 overflow-y-auto p-5 overscroll-contain">
+          <section aria-label={tr('更新内容', 'Release notes')} tabIndex={0} className="min-h-0 flex-1 overflow-y-auto p-5 overscroll-contain focus-visible:outline-2 focus-visible:outline-ring focus-visible:-outline-offset-2">
             <ol className="space-y-3">
               {releaseNotes.map((note, index) => (
                 <li key={`${note.date}-${note.titleJa}`}>

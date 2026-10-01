@@ -1,7 +1,8 @@
 import { stylePresets } from '@/data/style-presets';
 import { antiAiBlocks } from '@/data/anti-ai-blocks';
 import { styleCategories, styleCompatibility } from '@/data/style-categories';
-import { promptBlockNames, type PromptBlocks, type PromptBlockName, type StyleCategory, type StylePackSelection } from './style-pack-types';
+import { promptBlockNames, type PromptBlocks, type PromptBlockName, type StyleCategory, type StylePackSelection, type SmoothCleanSettings } from './style-pack-types';
+import { automaticSmoothCleanHelpers, normalizeSmoothClean } from './smooth-clean';
 
 export const MAX_ANTI_AI = 5;
 export const emptyStylePack = (): StylePackSelection => ({ presetId: '', antiAiIds: [], excludedBlocks: [] });
@@ -27,11 +28,13 @@ export function addAntiAi(ids: string[], id: string): string[] {
 export function normalizeStylePack(value: unknown): StylePackSelection | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
   const source = value as Record<string, unknown>;
+  const smoothClean = normalizeSmoothClean(source.smoothClean);
   return {
     presetId: typeof source.presetId === 'string' && findStylePreset(source.presetId) ? source.presetId : '',
     antiAiIds: Array.isArray(source.antiAiIds)
       ? source.antiAiIds.reduce<string[]>((ids, id) => typeof id === 'string' ? addAntiAi(ids, id) : ids, []) : [],
     excludedBlocks: promptBlockNames.filter((name) => Array.isArray(source.excludedBlocks) && source.excludedBlocks.includes(name)),
+    ...(smoothClean ? { smoothClean } : {}),
   };
 }
 
@@ -56,8 +59,13 @@ export function pickRandomStyle(category: StyleCategory | 'all', currentId?: str
   return candidates.find((_, index) => { cursor -= weights[index]; return cursor < 0; }) ?? candidates[0];
 }
 
-export function buildAntiAiBlock(ids: string[]) {
-  const selected = normalizeStylePack({ antiAiIds: ids })?.antiAiIds ?? [];
+export function effectiveStyleHelperIds(selection?: StylePackSelection): string[] {
+  const manual = normalizeStylePack({ antiAiIds: selection?.antiAiIds })?.antiAiIds ?? [];
+  return [...new Set([...manual, ...automaticSmoothCleanHelpers(selection?.smoothClean)])];
+}
+
+export function buildAntiAiBlock(ids: string[], smoothClean?: SmoothCleanSettings) {
+  const selected = effectiveStyleHelperIds({ ...emptyStylePack(), antiAiIds: ids, smoothClean });
   return [...new Set(selected.flatMap((id) => findAntiAiBlock(id)?.antiAiPrompt.split(',').map((part) => part.trim()).filter(Boolean) ?? []))].join(', ');
 }
 
@@ -73,6 +81,15 @@ export function stylePackWarnings(selection?: StylePackSelection) {
   if (style.category === 'anime_webtoon' && has('registration_shift_print')) warnings.push({ ja: '強い版ズレはアニメの線を崩す場合があります。', en: 'Strong registration shifts can disrupt anime linework.' });
   if (style.category === 'education_diagram' && has('human_proportion_variance')) warnings.push({ ja: '比率の揺らぎは教材・図解の正確さに影響する場合があります。', en: 'Proportion variation may reduce diagram accuracy.' });
   if (style.id === 'glossy_anime' && (has('matte_finish') || has('reduced_polish'))) warnings.push({ ja: 'マット化・整いすぎの抑制により、光沢のある画風が変わる場合があります。', en: 'Matte / reduced polish helpers may change the glossy finish.' });
+  const effective = effectiveStyleHelperIds(selection);
+  const hasAny = (...ids: string[]) => ids.some((id) => effective.includes(id));
+  const controls = selection.smoothClean;
+  if ((style.category === 'smooth_clean' || controls?.smoothnessLevel === 'smooth') && hasAny('rough_paper_grain', 'line_irregularity_strong', 'registration_shift_print', 'reduced_polish')) warnings.push({ ja: 'ざらつき・強い線の乱れなどの補助が、すっきりした仕上げと競合する場合があります。手動の補助は変更していません。', en: 'Rough texture or strong irregularity helpers may conflict with a clean finish. Manual helpers are kept unchanged.' });
+  if ((controls?.hairDetailLevel === 'high' && hasAny('anti_overdetailed_hair', 'face_over_hair_priority'))
+    || (controls?.hairClumpSize === 'small' && hasAny('large_hair_clumps_prompt', 'soft_grouped_bangs'))
+    || (controls?.hairTipStyle === 'sharp' && hasAny('anti_spiky_hair_ends'))
+    || (controls?.ornamentLevel === 'rich' && hasAny('restrained_ornament', 'reduced_accessory_count'))
+    || (controls?.smoothnessLevel === 'textured' && hasAny('smooth_surface_finish', 'reduced_texture_buildup'))) warnings.push({ ja: '描き込み調整と補助に反対方向の指定があります。必要に応じて補助や調整を解除してください。', en: 'Some rendering controls and helpers point in opposite directions. Clear the conflicting helper or control if needed.' });
   return warnings;
 }
 

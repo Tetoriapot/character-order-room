@@ -1,6 +1,7 @@
 import { englishFor, labelFor } from '@/data/options';
 import type { CharacterSnapshot, LockKey, UiLanguage } from './character-types';
 import { emptyStylePack, findAntiAiBlock, findStylePreset } from './style-pack';
+import { smoothCleanAvoidChoices, smoothCleanControls } from '@/data/smooth-clean-options';
 import { blankPerson, castChoiceLabel, castInteractions, castPositions, castRelationships, memberDraft, PERSON_CUSTOM_KEYS, PERSON_FIELDS, syncCast } from './character-cast';
 
 export type CharacterChange = {
@@ -111,6 +112,26 @@ export function diffSnapshots(before: CharacterSnapshot, after: CharacterSnapsho
   }
   const previousStyle = before.draft.stylePack ?? emptyStylePack();
   const nextStyle = after.draft.stylePack ?? emptyStylePack();
+  for (const control of smoothCleanControls) {
+    const previous = previousStyle.smoothClean?.[control.key];
+    const next = nextStyle.smoothClean?.[control.key];
+    if (previous !== next) changes.push({
+      id: `smooth-${control.key}`, labelJa: control.ja, labelEn: control.en,
+      beforeJa: control.options.find((item) => item.id === previous)?.ja ?? '指定なし',
+      beforeEn: control.options.find((item) => item.id === previous)?.en ?? 'Not set',
+      afterJa: control.options.find((item) => item.id === next)?.ja ?? '指定なし',
+      afterEn: control.options.find((item) => item.id === next)?.en ?? 'Not set',
+    });
+  }
+  const previousAvoid = previousStyle.smoothClean?.avoidIds ?? [];
+  const nextAvoid = nextStyle.smoothClean?.avoidIds ?? [];
+  if (!sameValue(previousAvoid, nextAvoid)) changes.push({
+    id: 'smooth-avoid', labelJa: '過描写の抑制', labelEn: 'Over-detail exclusions',
+    beforeJa: smoothCleanAvoidChoices.filter((item) => previousAvoid.includes(item.id)).map((item) => item.ja).join('、') || 'なし',
+    beforeEn: smoothCleanAvoidChoices.filter((item) => previousAvoid.includes(item.id)).map((item) => item.en).join(', ') || 'None',
+    afterJa: smoothCleanAvoidChoices.filter((item) => nextAvoid.includes(item.id)).map((item) => item.ja).join('、') || 'なし',
+    afterEn: smoothCleanAvoidChoices.filter((item) => nextAvoid.includes(item.id)).map((item) => item.en).join(', ') || 'None',
+  });
   if (previousStyle.presetId !== nextStyle.presetId) changes.push({
     id: 'style-pack', labelJa: '画風プリセット', labelEn: 'Style preset',
     beforeJa: findStylePreset(previousStyle.presetId)?.nameJa ?? '従来の絵柄',

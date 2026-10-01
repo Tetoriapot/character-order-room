@@ -1,4 +1,5 @@
 import type { AntiAiBlock } from '@/lib/style-pack-types';
+import { smoothCleanHelpers } from './smooth-clean-addon';
 
 // Converted from the user-provided style expansion pack; no external API required.
 export const antiAiBlocks = [
@@ -361,5 +362,6 @@ export const antiAiBlocks = [
       "clarity"
     ],
     "caution": "背景や衣装の暴走防止"
-  }
+  },
+  ...smoothCleanHelpers,
 ] satisfies AntiAiBlock[];

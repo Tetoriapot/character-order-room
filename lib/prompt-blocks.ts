@@ -2,6 +2,7 @@ import type { CharacterDraft } from './character-types';
 import type { PromptBlocks } from './style-pack-types';
 import { generatePrompts, type PromptOutputs } from './prompt-engine';
 import { buildAntiAiBlock, findStylePreset, formatPromptBlocks } from './style-pack';
+import { buildStylePrompt } from './smooth-clean';
 
 export function buildPromptBlocks(draft: CharacterDraft, outputs?: PromptOutputs): PromptBlocks {
   const style = findStylePreset(draft.stylePack?.presetId);
@@ -10,8 +11,8 @@ export function buildPromptBlocks(draft: CharacterDraft, outputs?: PromptOutputs
   const content = generatePrompts({ ...draft, style: '', styleTraits: [], stylePack: undefined, custom: { ...draft.custom, style: '' } });
   return {
     CONTENT: content.positiveJa,
-    STYLE: style.stylePrompt,
-    ANTI_AI: buildAntiAiBlock(draft.stylePack?.antiAiIds ?? []),
+    STYLE: buildStylePrompt(style, draft.stylePack?.smoothClean),
+    ANTI_AI: buildAntiAiBlock(draft.stylePack?.antiAiIds ?? [], draft.stylePack?.smoothClean),
     AVOID: (outputs ?? generatePrompts(draft)).negativeEn.replace(/^Constraints:\s*/, ''),
   };
 }
