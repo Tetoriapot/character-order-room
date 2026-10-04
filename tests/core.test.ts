@@ -7,6 +7,7 @@ import './cast-workflow-checks';
 import './asset-checks';
 import './asset-random-checks';
 import './asset-rpg-manga-checks';
+import './asset-history-checks';
 import {
   accessories,
   backgrounds,

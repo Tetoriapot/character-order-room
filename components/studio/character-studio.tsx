@@ -204,6 +204,7 @@ import { CharacterNoteInferencePanel } from './character-note-inference-panel';
 import { ChangeList } from './change-list';
 import { StylePackPanel } from './style-pack-panel';
 import { PromptBlockPreview } from './prompt-block-preview';
+import { StudioHeader } from './studio-header';
 import { outputTabs, type StudioOutputMode } from '@/lib/prompt-output-tabs';
 import { ChoiceChips, FieldActions, FormRow, SingleSelect } from './form-controls';
 
@@ -1496,14 +1497,6 @@ export function CharacterStudio({ assetsHref = '/assets/' }: { assetsHref?: stri
   };
 
   useEffect(() => {
-    const header = document.querySelector('header');
-    if (!header) return;
-    const observer = new ResizeObserver(() => document.documentElement.style.setProperty('--studio-header-height', `${header.getBoundingClientRect().height}px`));
-    observer.observe(header);
-    return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => {
     const preview = document.getElementById('prompt-preview');
     if (!preview || typeof IntersectionObserver === 'undefined') return;
     const observer = new IntersectionObserver(
@@ -1572,87 +1565,24 @@ export function CharacterStudio({ assetsHref = '/assets/' }: { assetsHref?: stri
       <a href="#prompt-preview" className="sr-only z-[100] rounded-lg bg-background p-3 focus:not-sr-only focus:fixed focus:left-52 focus:top-3">{tr('完成した指示書へ移動', 'Skip to finished brief')}</a>
       <output className="sr-only" aria-live="polite" aria-atomic="true">{announcement}</output>
       <main className="min-h-screen bg-background text-foreground [overflow-wrap:anywhere]">
-        <header className="sticky top-0 z-40 border-b border-border bg-card">
-          <div className="mx-auto flex min-h-16 max-w-[1680px] flex-wrap items-center justify-between gap-2 px-3 py-2 sm:px-6">
-            <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
-              <div className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground">
-                <Sparkles className="size-5" />
-              </div>
-              <div className="min-w-0">
-                <h1 className="text-base font-bold tracking-tight sm:text-lg">{tr('キャラクター発注室', 'Character Brief Studio')}</h1>
-                <p className="hidden text-xs font-bold tracking-[0.08em] text-muted-foreground sm:block">{tr('イラスト指示書メーカー', 'Illustration Prompt Builder')}</p>
-              </div>
-            </div>
-            <div className="flex w-full flex-wrap items-center justify-between gap-1 sm:w-auto sm:justify-end sm:gap-2">
-              <a href={assetsHref} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-primary hover:bg-secondary focus-visible:outline-2 focus-visible:outline-primary">
-                <Sparkles className="size-4" aria-hidden="true" />{tr('素材・演出発注室', 'Asset & Motion Studio')}<ChevronRight className="size-3.5" aria-hidden="true" />
-              </a>
-              <Button
-                aria-label={tr('表示言語を切り替える', 'Switch display language')}
-                variant="ghost"
-                size="icon"
-                className="hidden min-h-11 min-w-11 rounded-lg sm:inline-flex"
-                onClick={toggleLanguage}
-              >
-                <Languages className="size-4" />
-              </Button>
-              <Button
-                aria-label={tr('明るさを切り替える', 'Toggle color mode')}
-                variant="ghost"
-                size="icon"
-                className="hidden min-h-11 min-w-11 rounded-lg sm:inline-flex"
-                onClick={toggleColorMode}
-              >
-                {preferences.colorMode === 'dark' ? <Sun className="size-4" /> : <Moon className="size-4" />}
-              </Button>
-              <Button
-                aria-label={tr('更新履歴を開く', 'Open changelog')}
-                variant="ghost"
-                size="sm"
-                className="min-h-11 min-w-11 gap-2 rounded-lg px-2.5 xl:px-3"
-                title={tr('更新履歴', 'What’s new')}
-                onClick={() => setChangelogOpen(true)}
-              >
-                <Megaphone className="hidden size-4 sm:block" />
-                <span>{tr('更新履歴', 'What’s new')}</span>
-              </Button>
-              <Button
-                aria-label={tr('ヘルプを開く', 'Open help')}
-                aria-keyshortcuts="?"
-                variant="ghost"
-                size="sm"
-                className="min-h-11 min-w-11 gap-2 rounded-lg px-2.5 xl:px-3"
-                title={tr('ヘルプとキーボードショートカット', 'Help and keyboard shortcuts')}
-                onClick={() => { setHelpTab('guide'); setHelpOpen(true); }}
-              >
-                <CircleHelp className="hidden size-4 sm:block" />
-                <span>{tr('ヘルプ', 'Help')}</span>
-              </Button>
-              <Button
-                aria-label={tr('履歴を開く', 'Open history')}
-                variant="ghost"
-                size="sm"
-                className="hidden min-h-11 min-w-11 gap-2 rounded-lg px-2.5 sm:inline-flex sm:px-3"
-                title={tr('編集履歴', 'Edit history')}
-                onClick={() => { setManagerTab('history'); setManagerOpen(true); }}
-              >
-                <History className="size-4" />
-                <span className="hidden xl:inline">{tr('履歴', 'History')}</span>
-              </Button>
-              <Button
-                aria-label={tr('プリセットを保存・読み込み', 'Save or load presets')}
-                variant="outline"
-                size="sm"
-                className="min-h-11 min-w-11 gap-2 rounded-lg bg-card px-2.5 sm:px-3"
-                title={tr('プリセットを保存・読み込み', 'Save or load presets')}
-                onClick={() => { setManagerTab('presets'); setManagerOpen(true); }}
-              >
-                <Bookmark className="hidden size-4 sm:block" />
-                <span>{tr('保存・読込', 'Save / Load')}</span>
-              </Button>
-            </div>
-          </div>
-        </header>
+        <StudioHeader
+          title={tr('キャラクター発注室', 'Character Brief Studio')}
+          subtitle={tr('イラスト指示書メーカー', 'Illustration Prompt Builder')}
+          icon={<Sparkles className="size-5" />}
+          roomHref={assetsHref}
+          roomLabel={tr('素材・演出発注室', 'Asset & Motion Studio')}
+          roomIcon={<Sparkles className="size-4" aria-hidden="true" />}
+          language={language}
+          dark={preferences.colorMode === 'dark'}
+          onToggleLanguage={toggleLanguage}
+          onToggleColorMode={toggleColorMode}
+          onChangelog={() => setChangelogOpen(true)}
+          onHelp={() => { setHelpTab('guide'); setHelpOpen(true); }}
+          onHistory={() => { setManagerTab('history'); setManagerOpen(true); }}
+          onSaveLoad={() => { setManagerTab('presets'); setManagerOpen(true); }}
+          saveLoadLabel={tr('プリセットを保存・読み込み', 'Save or load presets')}
+          helpShortcut="?"
+        />
 
         <div className="mx-auto grid max-w-[1680px] grid-cols-1 xl:grid-cols-[220px_minmax(0,1fr)_410px]">
           <aside className="sticky top-[var(--studio-header-height,64px)] hidden h-[calc(100dvh-var(--studio-header-height,64px))] overflow-y-auto border-r border-border bg-card px-3 py-5 xl:block">

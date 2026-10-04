@@ -1,5 +1,7 @@
 'use client';
 
+import { useAssetUi } from './asset-ui-context';
+
 import { useState } from 'react';
 import { Clipboard, Download } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -22,6 +24,7 @@ export function AssetOutputPreview({
   onCopy: (text: string) => void;
   onDownload: (text: string, filename: string, mime: string) => void;
 }) {
+  const { language, tr } = useAssetUi();
   const [mode, setMode] = useState<StudioOutputMode>('ja');
   const [blockSelection, setBlockSelection] = useState<StylePackSelection>({
     presetId: '',
@@ -31,7 +34,7 @@ export function AssetOutputPreview({
   const outputs = buildAssetOutputs(draft, blockSelection.excludedBlocks);
   const activeOutput = outputs[mode];
   const activeTab = outputTabs.find((tab) => tab.value === mode)!;
-  const warnings = mode === 'ja' ? outputs.warningsJa : outputs.warningsEn;
+  const warnings = language === 'ja' ? outputs.warningsJa : outputs.warningsEn;
 
   return (
     <div>
@@ -41,7 +44,7 @@ export function AssetOutputPreview({
             LIVE PREVIEW
           </p>
           <h2 id="asset-preview-title" className="mt-1 text-lg font-bold">
-            できあがりの指示書
+            {tr('できあがりの指示書')}
           </h2>
         </div>
         <Badge
@@ -49,7 +52,7 @@ export function AssetOutputPreview({
           className="gap-1.5 border-success/25 bg-success/10 text-success"
         >
           <span className="size-1.5 rounded-full bg-success" />
-          自動更新
+          {tr('自動更新')}
         </Badge>
       </div>
       <div className="mt-4 overflow-hidden rounded-lg border border-border bg-card shadow-none">
@@ -62,7 +65,7 @@ export function AssetOutputPreview({
             <TabsList
               variant="line"
               className="grid w-full grid-cols-3 gap-1 group-data-horizontal/tabs:h-auto"
-              aria-label="指示書の出力方法"
+              aria-label={tr('指示書の出力方法')}
             >
               {outputTabs.map((tab) => (
                 <TabsTrigger
@@ -70,7 +73,7 @@ export function AssetOutputPreview({
                   value={tab.value}
                   className="h-11 min-w-0 px-2 text-sm group-data-horizontal/tabs:after:bottom-0"
                 >
-                  {tab.labelJa}
+                  {tab[language === 'ja' ? 'labelJa' : 'labelEn']}
                 </TabsTrigger>
               ))}
             </TabsList>
@@ -80,7 +83,8 @@ export function AssetOutputPreview({
               onClick={() => onCopy(activeOutput)}
             >
               <Clipboard className="size-4" />
-              {activeTab.labelJa}をコピー
+              {activeTab[language === 'ja' ? 'labelJa' : 'labelEn']}
+              {tr('をコピー')}
             </Button>
           </div>
           {outputTabs.map((tab) => (
@@ -90,13 +94,13 @@ export function AssetOutputPreview({
               className="min-h-[330px] p-5"
             >
               <p className="mb-4 rounded-lg bg-muted/55 p-3 text-sm text-muted-foreground">
-                {tab.hintJa}
+                {tab[language === 'ja' ? 'hintJa' : 'hintEn']}
               </p>
               {tab.value === 'blocks' ? (
                 <PromptBlockPreview
                   blocks={outputs.promptBlocks}
                   selection={blockSelection}
-                  language="ja"
+                  language={language}
                   onChange={setBlockSelection}
                   onCopy={onCopy}
                 />
@@ -135,7 +139,7 @@ export function AssetOutputPreview({
                   )
                 }
               >
-                肯定だけ
+                {tr('肯定だけ')}
               </Button>
               <Button
                 disabled={!ready}
@@ -148,13 +152,16 @@ export function AssetOutputPreview({
                   )
                 }
               >
-                制約だけ
+                {tr('制約だけ')}
               </Button>
             </div>
           )}
           <div className="mt-2 flex items-center justify-between gap-2 px-1 text-xs text-muted-foreground">
-            <span>{activeOutput.length.toLocaleString('ja-JP')}文字</span>
-            <span>タブで用途別に切替</span>
+            <span>
+              {activeOutput.length.toLocaleString('ja-JP')}
+              {tr('文字')}
+            </span>
+            <span>{tr('タブで用途別に切替')}</span>
           </div>
           <Button
             disabled={!ready || !activeOutput}
@@ -169,7 +176,8 @@ export function AssetOutputPreview({
             }
           >
             <Download />
-            {activeTab.labelJa}をTXT保存
+            {activeTab[language === 'ja' ? 'labelJa' : 'labelEn']}
+            {tr('をTXT保存')}
           </Button>
         </div>
       </div>
