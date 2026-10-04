@@ -6,6 +6,7 @@ import test from 'node:test';
 
 const output = fileURLToPath(new URL('../dist-pages/', import.meta.url));
 const html = readFileSync(resolve(output, 'index.html'), 'utf8');
+const assetHtml = readFileSync(resolve(output, 'assets/index.html'), 'utf8');
 const pagesPath = process.env.PAGES_BASE_PATH?.replace(/^\/+|\/+$/g, '') ?? '';
 const base = pagesPath ? `/${pagesPath}/` : '/';
 
@@ -39,4 +40,22 @@ test('only static distribution files are published', () => {
   const files = readdirSync(output, { recursive: true });
   assert.ok(files.every((file) => !/(?:^|[/\\])(?:\.git|\.openai|server|node_modules)(?:[/\\]|$)/.test(file)));
   assert.ok(files.every((file) => !/\.(?:tsx?|map)$/.test(file)));
+});
+
+test('asset room has a directly accessible page with its own metadata and base-aware resources', () => {
+  assert.match(assetHtml, /<title>素材・演出発注室/);
+  assert.match(assetHtml, /<html lang="ja">/);
+  assert.match(assetHtml, /id="root"/);
+  assert.match(assetHtml, /<noscript>/);
+  for (const name of ['robots', 'googlebot']) {
+    assert.match(assetHtml, new RegExp(`<meta name="${name}" content="noindex, nofollow, noarchive, nosnippet, noimageindex"`));
+  }
+  const urls = [...assetHtml.matchAll(/(?:src|href)="([^"]+)"/g)].map((match) => match[1]);
+  assert.ok(urls.some((url) => url.endsWith('.js')));
+  assert.ok(urls.some((url) => url.endsWith('.css')));
+  for (const url of urls) {
+    assert.ok(url.startsWith(base), `asset page resource must use ${base}: ${url}`);
+    assert.ok(existsSync(resolve(output, url.slice(base.length))), `asset page resource exists: ${url}`);
+  }
+  assert.doesNotMatch(assetHtml, /main\.tsx|localhost|chatgpt\.site|%BASE_URL%/);
 });

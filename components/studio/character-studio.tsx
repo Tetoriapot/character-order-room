@@ -157,7 +157,6 @@ import type {
   GuidedSectionId,
   HistoryEntry,
   LockKey,
-  OutputMode,
   SavedPreset,
   StudioPreferences,
 } from '@/lib/character-types';
@@ -205,6 +204,7 @@ import { CharacterNoteInferencePanel } from './character-note-inference-panel';
 import { ChangeList } from './change-list';
 import { StylePackPanel } from './style-pack-panel';
 import { PromptBlockPreview } from './prompt-block-preview';
+import { outputTabs, type StudioOutputMode } from '@/lib/prompt-output-tabs';
 import { ChoiceChips, FieldActions, FormRow, SingleSelect } from './form-controls';
 
 const sectionMeta: Array<{
@@ -251,16 +251,6 @@ const inferenceSectionByField: Partial<Record<LockKey, GuidedSectionId>> = {
   lighting: 'scene',
   negatives: 'negative',
 };
-
-type StudioOutputMode = OutputMode | 'blocks';
-const outputTabs: Array<{ value: StudioOutputMode; labelJa: string; labelEn: string; hintJa: string; hintEn: string }> = [
-  { value: 'blocks', labelJa: 'ブロック', labelEn: 'Blocks', hintJa: '内容（日本語）・画風・補助・禁止事項を分離', hintEn: 'Japanese content, English style, helpers, and exclusions' },
-  { value: 'ja', labelJa: '日本語', labelEn: 'Japanese', hintJa: '人への依頼・内容確認向け', hintEn: 'For review or a Japanese-language commission' },
-  { value: 'en', labelJa: 'English', labelEn: 'English', hintJa: '英語対応の画像生成AI向け', hintEn: 'For image tools that accept natural English' },
-  { value: 'both', labelJa: '日英', labelEn: 'JP + EN', hintJa: '共有・保存用の完全版', hintEn: 'Complete bilingual version for sharing' },
-  { value: 'short', labelJa: '短縮', labelEn: 'Short', hintJa: '文字数を抑えたいサービス向け', hintEn: 'For tools with tighter prompt limits' },
-  { value: 'tags', labelJa: 'タグ', labelEn: 'Tags', hintJa: 'カンマ区切り入力向け', hintEn: 'For comma-separated tag prompts' },
-];
 
 const releaseNotes = [
   {
@@ -502,7 +492,7 @@ function StudioSection({
   );
 }
 
-export function CharacterStudio() {
+export function CharacterStudio({ assetsHref = '/assets/' }: { assetsHref?: string }) {
   const [timeline, setTimeline] = useState(() => createEditorTimeline({ draft: defaultDraft, locks: {} }));
   const draft = timeline.present.snapshot.draft;
   const locks = timeline.present.snapshot.locks;
@@ -1594,6 +1584,9 @@ export function CharacterStudio() {
               </div>
             </div>
             <div className="flex w-full flex-wrap items-center justify-between gap-1 sm:w-auto sm:justify-end sm:gap-2">
+              <a href={assetsHref} className="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-primary hover:bg-secondary focus-visible:outline-2 focus-visible:outline-primary">
+                <Sparkles className="size-4" aria-hidden="true" />{tr('素材・演出発注室', 'Asset & Motion Studio')}<ChevronRight className="size-3.5" aria-hidden="true" />
+              </a>
               <Button
                 aria-label={tr('表示言語を切り替える', 'Switch display language')}
                 variant="ghost"

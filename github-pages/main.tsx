@@ -1,5 +1,5 @@
 import { createRoot } from 'react-dom/client';
-import Home from '../app/page';
+import { CharacterStudio } from '../components/studio/character-studio';
 import '../app/globals.css';
 
-createRoot(document.getElementById('root')!).render(<Home />);
+createRoot(document.getElementById('root')!).render(<CharacterStudio assetsHref="./assets/" />);

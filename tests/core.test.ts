@@ -4,6 +4,9 @@ import './style-pack-checks';
 import './camera-checks';
 import './cast-checks';
 import './cast-workflow-checks';
+import './asset-checks';
+import './asset-random-checks';
+import './asset-rpg-manga-checks';
 import {
   accessories,
   backgrounds,

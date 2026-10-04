@@ -29,6 +29,12 @@ export default defineConfig({
     },
   ],
   build: {
+    rollupOptions: {
+      input: {
+        character: fileURLToPath(new URL('./github-pages/index.html', import.meta.url)),
+        assets: fileURLToPath(new URL('./github-pages/assets/index.html', import.meta.url)),
+      },
+    },
     outDir: fileURLToPath(new URL('./dist-pages', import.meta.url)),
     emptyOutDir: true,
   },
