@@ -10,6 +10,7 @@ import {
 import { normalizeAgeInput } from './age-utils';
 import { buildAntiAiBlock, defaultStyleAvoid, defaultStyleAvoidJa, effectiveStyleHelperIds, findAntiAiBlock, findStylePreset, normalizeStylePack } from './style-pack';
 import { buildStylePrompt, smoothCleanAvoids, smoothCleanSummary } from './smooth-clean';
+import { painterlyAvoids, painterlySummary } from './painterly-style';
 import {
   backgroundConflictsWithTime,
   lightingConflictsWithTime,
@@ -495,12 +496,13 @@ export function generatePrompts(sourceDraft: CharacterDraft, negativeContexts?: 
   const stylePack = normalizeStylePack(draft.stylePack);
   const activeStyle = findStylePreset(stylePack?.presetId);
   const styleJa = activeStyle?.nameJa ?? (draft.style ? labelFor('style', draft.style) : '');
-  const styleEn = activeStyle ? buildStylePrompt(activeStyle, stylePack?.smoothClean) : (draft.style ? englishFor('style', draft.style) : '');
+  const styleEn = activeStyle ? buildStylePrompt(activeStyle, stylePack?.smoothClean, stylePack?.painterly) : (draft.style ? englishFor('style', draft.style) : '');
   const styleTraitsJa = activeStyle ? [] : labelList('styleTraits', draft.styleTraits, 'ja');
   const styleTraitsEn = activeStyle ? [] : labelList('styleTraits', draft.styleTraits, 'en');
   const antiAiEn = activeStyle ? buildAntiAiBlock(stylePack?.antiAiIds ?? [], stylePack?.smoothClean) : '';
   const antiAiJa = activeStyle ? effectiveStyleHelperIds(stylePack).map((id) => findAntiAiBlock(id)?.nameJa).filter(Boolean).join('、') : '';
   const renderingJa = activeStyle ? smoothCleanSummary(stylePack?.smoothClean, 'ja') : '';
+  const painterlyJa = painterlySummary(activeStyle, stylePack?.painterly, 'ja');
   const subjectJa = buildJaSubject(draft);
   const subjectEn = buildEnSubject(draft);
   const buildJa = draft.build ? labelFor('build', draft.build) : '';
@@ -595,6 +597,7 @@ export function generatePrompts(sourceDraft: CharacterDraft, negativeContexts?: 
   const jaParts = compact([
     hasLeadDirection ? sentenceJa(`${purposeLeadJa}${styleJa || 'キャラクターイラスト'}${styleTraitsJa.length ? `。仕上げの特徴：${joinJa(styleTraitsJa)}` : ''}`) : '',
     renderingJa ? sentenceJa(`描写調整（画風内の指定より優先）：${renderingJa}`) : '',
+    painterlyJa ? sentenceJa(`厚塗りの設定：${painterlyJa}`) : '',
     !backgroundOnly && hasSubjectDirection ? sentenceJa(`人物：${subjectJa}`) : '',
     !backgroundOnly && buildJa ? sentenceJa(`体格：${buildJa}`) : '',
     !backgroundOnly && draft.skinTone ? sentenceJa(`肌：${labelFor('skinTone', draft.skinTone)}`) : '',
@@ -658,12 +661,14 @@ export function generatePrompts(sourceDraft: CharacterDraft, negativeContexts?: 
   const negativeItemsJa = uniqueSemantic([
     ...(activeStyle ? defaultStyleAvoidJa : []),
     ...(activeStyle ? smoothCleanAvoids(stylePack?.smoothClean).map((item) => `${item.ja}を避ける`) : []),
+    ...painterlyAvoids(activeStyle, stylePack?.painterly).map((item) => `${item.ja}を避ける`),
     ...fixedNegativeChoices.map((choice) => choice.labelJa),
     ...customNegativeItems,
   ]);
   const negativeInstructionsEn = uniqueSemantic([
     ...(activeStyle ? defaultStyleAvoid : []),
     ...(activeStyle ? smoothCleanAvoids(stylePack?.smoothClean).map((item) => item.prompt) : []),
+    ...painterlyAvoids(activeStyle, stylePack?.painterly).map((item) => item.prompt),
     ...fixedNegativeChoices.map((choice) => negativeInstructionEn(choice.labelEn)),
     ...customNegativeItems.map((value) => negativeInstructionEn(translateFreeText(value))),
   ]);

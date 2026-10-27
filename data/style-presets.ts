@@ -1,8 +1,9 @@
 import type { StylePreset } from '@/lib/style-pack-types';
 import { smoothCleanPresets } from './smooth-clean-addon';
+import { painterlyPresets } from './painterly-presets';
 
 // Converted from the user-provided style expansion pack; no external API required.
-export const stylePresets = [
+export const stylePresets: StylePreset[] = [
   {
     "id": "natural_handdrawn",
     "nameJa": "自然な手描き",
@@ -1379,4 +1380,5 @@ export const stylePresets = [
     "weight": 1
   },
   ...smoothCleanPresets,
-] satisfies StylePreset[];
+  ...painterlyPresets,
+];

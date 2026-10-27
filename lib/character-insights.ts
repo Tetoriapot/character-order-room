@@ -2,6 +2,7 @@ import { englishFor, labelFor } from '@/data/options';
 import type { CharacterSnapshot, LockKey, UiLanguage } from './character-types';
 import { emptyStylePack, findAntiAiBlock, findStylePreset } from './style-pack';
 import { smoothCleanAvoidChoices, smoothCleanControls } from '@/data/smooth-clean-options';
+import { painterlyAvoidChoices, painterlyControls } from '@/data/painterly-options';
 import { blankPerson, castChoiceLabel, castInteractions, castPositions, castRelationships, memberDraft, PERSON_CUSTOM_KEYS, PERSON_FIELDS, syncCast } from './character-cast';
 
 export type CharacterChange = {
@@ -112,6 +113,26 @@ export function diffSnapshots(before: CharacterSnapshot, after: CharacterSnapsho
   }
   const previousStyle = before.draft.stylePack ?? emptyStylePack();
   const nextStyle = after.draft.stylePack ?? emptyStylePack();
+  for (const control of painterlyControls) {
+    const previous = previousStyle.painterly?.[control.key];
+    const next = nextStyle.painterly?.[control.key];
+    if (previous !== next) changes.push({
+      id: `painterly-${control.key}`, labelJa: `厚塗り：${control.ja}`, labelEn: `Painterly: ${control.en}`,
+      beforeJa: control.options.find((item) => item.id === previous)?.ja ?? '画風の指定',
+      beforeEn: control.options.find((item) => item.id === previous)?.en ?? 'Style default',
+      afterJa: control.options.find((item) => item.id === next)?.ja ?? '画風の指定',
+      afterEn: control.options.find((item) => item.id === next)?.en ?? 'Style default',
+    });
+  }
+  const previousPainterlyAvoid = previousStyle.painterly?.excludedAvoidIds ?? [];
+  const nextPainterlyAvoid = nextStyle.painterly?.excludedAvoidIds ?? [];
+  if (!sameValue(previousPainterlyAvoid, nextPainterlyAvoid)) changes.push({
+    id: 'painterly-avoid', labelJa: '厚塗り用ネガティブから外す項目', labelEn: 'Disabled painterly negatives',
+    beforeJa: painterlyAvoidChoices.filter((item) => previousPainterlyAvoid.includes(item.id)).map((item) => item.ja).join('、') || 'なし',
+    beforeEn: painterlyAvoidChoices.filter((item) => previousPainterlyAvoid.includes(item.id)).map((item) => item.en).join(', ') || 'None',
+    afterJa: painterlyAvoidChoices.filter((item) => nextPainterlyAvoid.includes(item.id)).map((item) => item.ja).join('、') || 'なし',
+    afterEn: painterlyAvoidChoices.filter((item) => nextPainterlyAvoid.includes(item.id)).map((item) => item.en).join(', ') || 'None',
+  });
   for (const control of smoothCleanControls) {
     const previous = previousStyle.smoothClean?.[control.key];
     const next = nextStyle.smoothClean?.[control.key];

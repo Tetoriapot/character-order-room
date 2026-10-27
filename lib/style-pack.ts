@@ -3,6 +3,7 @@ import { antiAiBlocks } from '@/data/anti-ai-blocks';
 import { styleCategories, styleCompatibility } from '@/data/style-categories';
 import { promptBlockNames, type PromptBlocks, type PromptBlockName, type StyleCategory, type StylePackSelection, type SmoothCleanSettings } from './style-pack-types';
 import { automaticSmoothCleanHelpers, normalizeSmoothClean } from './smooth-clean';
+import { normalizePainterly } from './painterly-style';
 
 export const MAX_ANTI_AI = 5;
 export const emptyStylePack = (): StylePackSelection => ({ presetId: '', antiAiIds: [], excludedBlocks: [] });
@@ -29,12 +30,14 @@ export function normalizeStylePack(value: unknown): StylePackSelection | undefin
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
   const source = value as Record<string, unknown>;
   const smoothClean = normalizeSmoothClean(source.smoothClean);
+  const painterly = normalizePainterly(source.painterly);
   return {
     presetId: typeof source.presetId === 'string' && findStylePreset(source.presetId) ? source.presetId : '',
     antiAiIds: Array.isArray(source.antiAiIds)
       ? source.antiAiIds.reduce<string[]>((ids, id) => typeof id === 'string' ? addAntiAi(ids, id) : ids, []) : [],
     excludedBlocks: promptBlockNames.filter((name) => Array.isArray(source.excludedBlocks) && source.excludedBlocks.includes(name)),
     ...(smoothClean ? { smoothClean } : {}),
+    ...(painterly ? { painterly } : {}),
   };
 }
 
@@ -84,6 +87,8 @@ export function stylePackWarnings(selection?: StylePackSelection) {
   const effective = effectiveStyleHelperIds(selection);
   const hasAny = (...ids: string[]) => ids.some((id) => effective.includes(id));
   const controls = selection.smoothClean;
+  if (style.painterly && (controls?.smoothnessLevel === 'smooth' || hasAny('smooth_surface_finish', 'reduced_texture_buildup', 'low_clutter_character_finish', 'simplify_face'))) warnings.push({ ja: '滑らかな仕上げや顔の簡略化が、筆跡を残す厚塗りと競合する場合があります。既存の調整と補助は保持しています。', en: 'Smooth-finish or simplified-face helpers may conflict with painterly brushwork. Existing controls and helpers are retained.' });
+  if (style.painterly && controls && (controls.hairClumpSize || controls.hairTipStyle || controls.hairDetailLevel)) warnings.push({ ja: '髪の個別調整も設定されています。出力では「髪・装飾・塗り」の指定を厚塗りの髪設定より優先します。', en: 'Individual hair controls are also set. Hair, ornament and finish controls take priority over painterly hair settings in output.' });
   if ((style.category === 'smooth_clean' || controls?.smoothnessLevel === 'smooth') && hasAny('rough_paper_grain', 'line_irregularity_strong', 'registration_shift_print', 'reduced_polish')) warnings.push({ ja: 'ざらつき・強い線の乱れなどの補助が、すっきりした仕上げと競合する場合があります。手動の補助は変更していません。', en: 'Rough texture or strong irregularity helpers may conflict with a clean finish. Manual helpers are kept unchanged.' });
   if ((controls?.hairDetailLevel === 'high' && hasAny('anti_overdetailed_hair', 'face_over_hair_priority'))
     || (controls?.hairClumpSize === 'small' && hasAny('large_hair_clumps_prompt', 'soft_grouped_bangs'))

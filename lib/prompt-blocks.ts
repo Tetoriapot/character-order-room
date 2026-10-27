@@ -11,7 +11,7 @@ export function buildPromptBlocks(draft: CharacterDraft, outputs?: PromptOutputs
   const content = generatePrompts({ ...draft, style: '', styleTraits: [], stylePack: undefined, custom: { ...draft.custom, style: '' } });
   return {
     CONTENT: content.positiveJa,
-    STYLE: buildStylePrompt(style, draft.stylePack?.smoothClean),
+    STYLE: buildStylePrompt(style, draft.stylePack?.smoothClean, draft.stylePack?.painterly),
     ANTI_AI: buildAntiAiBlock(draft.stylePack?.antiAiIds ?? [], draft.stylePack?.smoothClean),
     AVOID: (outputs ?? generatePrompts(draft)).negativeEn.replace(/^Constraints:\s*/, ''),
   };

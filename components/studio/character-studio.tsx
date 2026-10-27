@@ -255,6 +255,11 @@ const inferenceSectionByField: Partial<Record<LockKey, GuidedSectionId>> = {
 
 const releaseNotes = [
   {
+    date: '2026-10-27', titleJa: '厚塗りアニメの画風と調整', titleEn: 'Painterly anime styles and controls',
+    itemsJa: ['虹色反射・青緑と黄色のガッシュ・宝石光沢・パステル・白黒基調の5画風を追加し、合計109種になりました。', 'ブラシ・毛束・光と色・背景を各3通りから調整できます。厚塗り用のネガティブ18種も個別に切り替えられます。', '人物設定を保ったまま絵柄を変更できます。調整は保存・共有・元に戻す・変更比較に対応し、複数人物では全員に適用します。'],
+    itemsEn: ['Added five styles: iridescent, teal and yellow gouache, dark jewel, pastel fantasy and monochrome flat-brush, for a total of 109.', 'Choose from three options each for brushwork, hair, lighting and background, with 18 individual painterly negatives.', 'Character inputs stay unchanged. Controls support saving, sharing, undo and change review, and apply to everyone in group mode.'],
+  },
+  {
     date: '2026-10-01', titleJa: '髪と装飾をすっきり整える追加パック', titleEn: 'Smooth / clean style add-on',
     itemsJa: ['画風24種・補助18種を追加し、合計104種・48種に拡張しました。', '髪の描き込み量・毛束・毛先・装飾量・塗りを調整できます。連動する自動補助は手動5件と別枠で、保存・共有・元に戻すにも対応します。', '避けたい描写10種と補助の検索を追加。PC・スマホでも調整しやすく整理しました。'],
     itemsEn: ['Added 24 styles and 18 helpers, for totals of 104 and 48.', 'Control hair detail, clumps, tips, ornament and finish. Automatic helpers are separate from the 5 manual slots, with save, share and undo support.', 'Added 10 rendering exclusions and helper search, with responsive controls for desktop and mobile.'],
@@ -2394,7 +2399,11 @@ export function CharacterStudio({ assetsHref = '/assets/' }: { assetsHref?: stri
                   },
                   {
                     title: tr('画風と内容を分けて作る', 'Separate style and content'),
-                    body: tr('STEP 2で104種から画風を選び、補助48種から手動で追加します（1〜3件推奨、最大5件）。髪・装飾・塗りの5項目から付く自動補助は別枠です。調整を未指定に戻しても手動の補助は残ります。避けたい描写はネガティブ／AVOIDへ反映。ブロックは整形・1行・JSONでコピーできます。調整は保存・共有・元に戻すに対応し、複数人物では全員共通です。', 'Choose from 104 styles and 48 helpers in STEP 2 (1–3 manual helpers recommended, maximum 5). Five rendering controls add automatic helpers separately. Unsetting a control retains manual selections. Rendering exclusions go to Negative / AVOID. Copy blocks formatted, on one line, or as JSON. Controls support saving, sharing and undo, and apply to everyone in group mode.'),
+                    body: tr('STEP 2で109種から画風を選び、補助48種から手動で追加します（1〜3件推奨、最大5件）。髪・装飾・塗りの5項目から付く自動補助は別枠です。調整を未指定に戻しても手動の補助は残ります。避けたい描写はネガティブ／AVOIDへ反映。ブロックは整形・1行・JSONでコピーできます。調整は保存・共有・元に戻すに対応し、複数人物では全員共通です。', 'Choose from 109 styles and 48 helpers in STEP 2 (1–3 manual helpers recommended, maximum 5). Five rendering controls add automatic helpers separately. Unsetting a control retains manual selections. Rendering exclusions go to Negative / AVOID. Copy blocks formatted, on one line, or as JSON. Controls support saving, sharing and undo, and apply to everyone in group mode.'),
+                  },
+                  {
+                    title: tr('厚塗りアニメを調整する', 'Adjust painterly anime'),
+                    body: tr('STEP 2の「厚塗りアニメ」から画風を選び、ブラシ・毛束・光と色・背景を調整します。「画風の指定」で選択中の画風の初期値に戻せます。ネガティブ18種は個別に外せますが、共通の禁止事項は残ります。既存の髪・塗りの調整も保持するため、注意表示がある場合は指定を確認してください。画像生成は行わず、再現性はモデルやLoRAにも左右されます。', 'Choose Painterly Anime in STEP 2, then adjust brushwork, hair, color and background. Style default follows the selected preset. The 18 negatives can be disabled individually; shared exclusions remain. Existing hair and finish controls are retained, so review any conflict notices. This tool does not generate images; results also depend on the model and LoRA.'),
                   },
                   {
                     title: tr('形式を選んでコピー', 'Choose a format and copy'),

@@ -1,5 +1,6 @@
 import { smoothCleanAvoidChoices, smoothCleanControls } from '@/data/smooth-clean-options';
-import type { SmoothCleanControls, SmoothCleanSettings, StylePreset } from './style-pack-types';
+import type { PainterlySettings, SmoothCleanControls, SmoothCleanSettings, StylePreset } from './style-pack-types';
+import { painterlyStylePrompt } from './painterly-style';
 
 export function normalizeSmoothClean(value: unknown): SmoothCleanSettings | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
@@ -34,8 +35,9 @@ export function smoothCleanSummary(settings: SmoothCleanSettings | undefined, la
   return smoothCleanSelections(settings).map(({ control, option }) => `${control[language]}: ${option[language]}`).join(language === 'ja' ? '、' : '; ');
 }
 
-export function buildStylePrompt(style: StylePreset, settings?: SmoothCleanSettings) {
+export function buildStylePrompt(style: StylePreset, settings?: SmoothCleanSettings, painterly?: PainterlySettings) {
   const adjustments = smoothCleanSelections(settings);
-  if (!adjustments.length) return style.stylePrompt;
-  return `${style.stylePrompt}. Rendering controls (override conflicting preset detail directions): ${adjustments.map(({ option }) => option.prompt).join(', ')}. Preserve the specified character identities, hair colors, and outfit choices; refine rendering rather than replacing them`;
+  const base = painterlyStylePrompt(style, painterly);
+  if (!adjustments.length) return base;
+  return `${base}. Rendering controls (override conflicting preset detail directions): ${adjustments.map(({ option }) => option.prompt).join(', ')}. Preserve the specified character identities, hair colors, and outfit choices; refine rendering rather than replacing them`;
 }

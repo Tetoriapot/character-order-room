@@ -7,6 +7,7 @@ import { stylePresets } from '@/data/style-presets';
 import { antiAiStrengths, styleCategories } from '@/data/style-categories';
 import { automaticSmoothCleanHelpers, buildStylePrompt } from '@/lib/smooth-clean';
 import { SmoothCleanPanel } from './smooth-clean-panel';
+import { PainterlyStylePanel } from './painterly-style-panel';
 import type { UiLanguage } from '@/lib/character-types';
 import type { StyleCategory, StylePackSelection } from '@/lib/style-pack-types';
 import { addAntiAi, antiAiReplaces, emptyStylePack, filterStylePresets, findAntiAiBlock, findStylePreset, MAX_ANTI_AI, pickRandomStyle, recommendAntiAiBlocks, stylePackWarnings } from '@/lib/style-pack';
@@ -98,7 +99,7 @@ export function StylePackPanel({ selection, language, favorites, locked, onChang
       {style && <details className="border-b border-border pb-3">
         <summary className="py-3 text-sm font-semibold">{tr('選択中の画風：指示文・保存・解除', 'Selected style: prompt, save, or clear')}</summary>
         <div className="space-y-3">
-        <p className="break-words text-sm leading-relaxed" lang="en">{buildStylePrompt(style, value.smoothClean)}</p>
+        <p className="break-words text-sm leading-relaxed" lang="en">{buildStylePrompt(style, value.smoothClean, value.painterly)}</p>
         {style.category === 'smooth_clean' && <p className="text-xs leading-relaxed text-muted-foreground">{tr('一部の画風は髪色・衣装・人物像の例を含みます。選択中の指示文を確認してください。人物の入力値は変更しません。', 'Some presets include example hair colors, outfits or character traits. Review the style text; your character inputs are not changed.')}</p>}
         <p className="text-xs leading-relaxed text-muted-foreground">{tr('選択中は、従来の絵柄・追加の雰囲気・絵柄の自由入力を出力しません（入力は保持）。人物のランダム生成でもこの画風は維持します。', 'While selected, classic style, style traits, and custom style text are retained but not output. Character randomization keeps this style.')}</p>
         <div className="flex flex-wrap gap-2">
@@ -108,6 +109,7 @@ export function StylePackPanel({ selection, language, favorites, locked, onChang
         </div>
         </div>
       </details>}
+      {style?.painterly && <PainterlyStylePanel style={style} value={value.painterly} language={language} onChange={(painterly) => onChange({ ...value, painterly })} onPreview={onPreview} />}
       {style && <SmoothCleanPanel key={style.id} value={value.smoothClean} language={language} initiallyOpen={style.category === 'smooth_clean' || !!value.smoothClean} onChange={(smoothClean) => onChange({ ...value, smoothClean })} />}
       {warnings.map((warning) => <p key={warning.en} className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm" role="status">{tr(warning.ja, warning.en)}</p>)}
       {style && <details className="border-b border-border pb-3">

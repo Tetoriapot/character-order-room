@@ -1,4 +1,12 @@
-export type StyleCategory = 'hand_drawn' | 'flat_editorial' | 'pop_character' | 'printmaking' | 'education_diagram' | 'fantasy_game' | 'anime_webtoon' | 'retro_misc' | 'smooth_clean';
+export type StyleCategory = 'hand_drawn' | 'flat_editorial' | 'pop_character' | 'printmaking' | 'education_diagram' | 'fantasy_game' | 'anime_webtoon' | 'retro_misc' | 'smooth_clean' | 'painterly_anime';
+
+export type PainterlyControls = {
+  brushTexture?: 'bold' | 'gouache' | 'soft';
+  hairRendering?: 'chunky' | 'soft' | 'sharp';
+  colorLight?: 'iridescent' | 'pastel' | 'natural';
+  backgroundTreatment?: 'dark' | 'bright' | 'simple';
+};
+export type PainterlySettings = PainterlyControls & { excludedAvoidIds?: string[] };
 
 export type SmoothCleanControls = {
   hairDetailLevel?: 'low' | 'medium' | 'high';
@@ -18,6 +26,7 @@ export type StylePreset = {
   stylePrompt: string;
   tags: string[];
   weight: number;
+  painterly?: { basePrompt: string; defaults: Required<PainterlyControls> };
 };
 
 export type AntiAiBlock = {
@@ -38,4 +47,5 @@ export type StylePackSelection = {
   antiAiIds: string[];
   excludedBlocks: PromptBlockName[];
   smoothClean?: SmoothCleanSettings;
+  painterly?: PainterlySettings;
 };
